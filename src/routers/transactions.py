@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import date
-from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi import APIRouter, HTTPException, Query
 from ..models import Transaction, TransactionWithCategory
 from ..crud import (
     get_transaction_by_id,
