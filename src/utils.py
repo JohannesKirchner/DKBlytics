@@ -12,5 +12,5 @@ def make_fingerprint(
     date_: date,
     reference: Optional[str],
 ) -> str:
-    raw = f"{text}|{entity}|{amount}|{account}|{date_.isoformat()}|{str(reference)}".encode()
+    raw = f"{text}|{entity}|{amount}|{account}|{date_.isoformat()}|{reference}".encode()
     return sha1(raw).hexdigest()

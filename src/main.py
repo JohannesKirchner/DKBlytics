@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from .database import initialize_database
-from .routers import accounts, transactions, bank  # , categories
+from .routers import accounts, transactions, bank, categories
 
 
 # Initialize the FastAPI application
@@ -20,6 +20,6 @@ def on_startup():
 
 # Include the routers to add the API endpoints
 app.include_router(transactions.router)
-# app.include_router(categories.router)
+app.include_router(categories.router)
 app.include_router(accounts.router)
 app.include_router(bank.router)

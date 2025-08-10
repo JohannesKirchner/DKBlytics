@@ -53,12 +53,12 @@ def initialize_database():
         """)
 
         # Create categories table with the new schema and composite primary key
-        # cursor.execute("""
-        #     CREATE TABLE IF NOT EXISTS categories (
-        #         text TEXT NOT NULL,
-        #         entity TEXT NOT NULL,
-        #         category TEXT NOT NULL,
-        #         PRIMARY KEY (text, entity)
-        #     )
-        # """)
-        # conn.commit()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+                text TEXT NOT NULL,
+                entity TEXT NOT NULL,
+                category TEXT NOT NULL,
+                PRIMARY KEY (text, entity)
+            )
+        """)
+        conn.commit()

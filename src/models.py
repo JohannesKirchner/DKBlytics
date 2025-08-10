@@ -37,14 +37,14 @@ class Account(BaseModel):
     balance: float = Field(..., ge=0, description="The current balance of the account.")
 
 
-# class Category(BaseModel):
-#     """
-#     Pydantic model for a transaction category.
-#     """
+class Category(BaseModel):
+    """
+    Pydantic model for a transaction category.
+    """
 
-#     text: str = Field(..., description="The text from the transaction description.")
-#     entity: str = Field(..., description="The entity from the transaction.")
-#     category: str = Field(..., description="The assigned category.")
+    text: str = Field(..., description="The text from the transaction description.")
+    entity: str = Field(..., description="The entity from the transaction.")
+    category: str = Field(..., description="The assigned category.")
 
 
 # class TransactionUpdate(BaseModel):

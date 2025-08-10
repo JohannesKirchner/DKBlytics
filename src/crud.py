@@ -1,7 +1,7 @@
 from typing import List, Optional  # , Dict, Any
 from datetime import date
 from .database import get_db_connection
-from .models import Transaction, Account  # , Category
+from .models import Transaction, Account, Category
 from .utils import make_fingerprint
 
 
@@ -142,33 +142,33 @@ def update_account_balance_db(account_name: str, new_balance: float) -> bool:
 # --- Category CRUD Operations ---
 
 
-# def get_category_db(text: str, entity: str) -> Optional[dict]:
-#     """Retrieves a category by text and entity."""
-#     with get_db_connection() as conn:
-#         cursor = conn.cursor()
-#         cursor.execute(
-#             "SELECT * FROM categories WHERE text = ? AND entity = ?", (text, entity)
-#         )
-#         return cursor.fetchone()
+def get_category_db(text: str, entity: str) -> Optional[dict]:
+    """Retrieves a category by text and entity."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM categories WHERE text = ? AND entity = ?", (text, entity)
+        )
+        return cursor.fetchone()
 
 
-# def create_or_update_category(category: Category) -> None:
-#     """Adds or updates a category."""
-#     with get_db_connection() as conn:
-#         cursor = conn.cursor()
-#         cursor.execute(
-#             "INSERT OR REPLACE INTO categories (text, entity, category) VALUES (?, ?, ?)",
-#             (category.text, category.entity, category.category),
-#         )
-#         conn.commit()
+def create_or_update_category(category: Category) -> None:
+    """Adds or updates a category."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO categories (text, entity, category) VALUES (?, ?, ?)",
+            (category.text, category.entity, category.category),
+        )
+        conn.commit()
 
 
-# def get_all_categories_db() -> List[dict]:
-#     """Retrieves all categories."""
-#     with get_db_connection() as conn:
-#         cursor = conn.cursor()
-#         cursor.execute("SELECT * FROM categories")
-#         return cursor.fetchall()
+def get_all_categories_db() -> List[dict]:
+    """Retrieves all categories."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM categories")
+        return cursor.fetchall()
 
 
 # def update_category_db(text: str, entity: str, new_category: str) -> bool:
