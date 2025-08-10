@@ -4,7 +4,11 @@ from dotenv import load_dotenv
 from fastapi import APIRouter
 from dkb_robo import DKBRobo
 from datetime import datetime
-from ..crud import create_transaction_db, create_or_update_account
+from ..crud import (
+    create_transaction_db,
+    create_or_update_account,
+    create_category_if_not_exists,
+)
 from ..models import Account, Transaction
 from collections import defaultdict
 
@@ -49,8 +53,8 @@ def fetch_bank_data():
 @router.post("/update_from_bank/")
 def update_from_bank():
     """
-    Connects to a bank API, fetches new transactions,
-    adds them to the database (without duplicates), and updates the balance.
+    Connects to a bank API, fetches new transactions, adds them to the database,
+    and creates placeholder categories for new (text, entity) pairs.
     """
     accounts, account_transactions = fetch_bank_data()
 
@@ -61,22 +65,23 @@ def update_from_bank():
                 Account(name=account["name"], balance=account["amount"])
             )
         except KeyError:
-            print(f"Account {account["name"]} does not have a balance field.")
+            print(f"Account {account['name']} does not have a balance field.")
             continue
 
         for transaction in transactions:
-            if create_transaction_db(
-                Transaction(
-                    text=transaction["text"],
-                    entity=transaction["peer"],
-                    account=account["name"],
-                    amount=transaction["amount"],
-                    date=transaction["date"],
-                    reference=transaction["customerreference"],
-                )
-            ):
+            tx_model = Transaction(
+                text=transaction["text"],
+                entity=transaction["peer"],
+                account=account["name"],
+                amount=transaction["amount"],
+                date=transaction["date"],
+                reference=transaction["customerreference"],
+            )
+            if create_transaction_db(tx_model):
                 new_transactions[account["name"]] += 1
+                # If the transaction is new, add its (text, entity) to categories
+                create_category_if_not_exists(tx_model.text, tx_model.entity)
 
     return {
-        "message": f"Successfully updated transaction {new_transactions} from bank API.",
+        "message": f"Successfully updated transactions: {dict(new_transactions)}. New category rules may have been added."
     }

@@ -1,4 +1,4 @@
-from typing import List, Optional  # , Dict, Any
+from typing import List, Optional, Any
 from datetime import date
 from .database import get_db_connection
 from .models import Transaction, Account, Category
@@ -59,42 +59,35 @@ def get_all_transactions_db(
     min_date: Optional[date] = None,
     max_date: Optional[date] = None,
 ) -> List[dict]:
-    """Retrieves all transactions with optional filtering."""
+    """
+    Retrieves all transactions with optional filtering,
+    joining with the categories table to include the category.
+    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        query = "SELECT * FROM transactions WHERE 1=1"
+        query = """
+            SELECT t.*, c.category
+            FROM transactions t
+            LEFT JOIN categories c ON t.text = c.text AND t.entity = c.entity
+            WHERE 1=1
+        """
         params = []
 
         if text:
-            query += " AND text LIKE ?"
+            query += " AND t.text LIKE ?"
             params.append(f"%{text}%")
         if account:
-            query += " AND account = ?"
+            query += " AND t.account = ?"
             params.append(account)
         if min_date:
-            query += " AND date >= ?"
+            query += " AND t.date >= ?"
             params.append(min_date)
         if max_date:
-            query += " AND date <= ?"
+            query += " AND t.date <= ?"
             params.append(max_date)
 
         cursor.execute(query, params)
         return cursor.fetchall()
-
-
-# def update_transaction_db(transaction_id: int, update_data: Dict[str, Any]) -> bool:
-#     """Updates an existing transaction by ID."""
-#     with get_db_connection() as conn:
-#         cursor = conn.cursor()
-#         set_clause = ", ".join([f"{key} = ?" for key in update_data.keys()])
-#         params = list(update_data.values())
-#         params.append(transaction_id)
-
-#         cursor.execute(
-#             f"UPDATE transactions SET {set_clause} WHERE transaction_id = ?", params
-#         )
-#         conn.commit()
-#         return cursor.rowcount > 0
 
 
 # --- Account CRUD Operations ---
@@ -152,6 +145,20 @@ def get_category_db(text: str, entity: str) -> Optional[dict]:
         return cursor.fetchone()
 
 
+def create_category_if_not_exists(text: str, entity: str) -> None:
+    """
+    Adds a new category rule with a null category if it doesn't already exist.
+    Existing categories are not touched.
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO categories (text, entity, category) VALUES (?, ?, NULL)",
+            (text, entity),
+        )
+        conn.commit()
+
+
 def create_or_update_category(category: Category) -> None:
     """Adds or updates a category."""
     with get_db_connection() as conn:
@@ -163,21 +170,50 @@ def create_or_update_category(category: Category) -> None:
         conn.commit()
 
 
-def get_all_categories_db() -> List[dict]:
+def get_all_categories_db(
+    text: Optional[str] = None, entity: Optional[str] = None
+) -> List[dict]:
     """Retrieves all categories."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM categories")
+
+        query = """
+            SELECT * FROM categories WHERE 1=1
+        """
+        params = []
+
+        if text:
+            query += " AND text LIKE ?"
+            params.append(f"%{text}%")
+        if entity:
+            query += " AND entity LIKE ?"
+            params.append(f"%{entity}%")
+
+        cursor.execute(query, params)
         return cursor.fetchall()
 
 
-# def update_category_db(text: str, entity: str, new_category: str) -> bool:
-#     """Updates a category by text and entity."""
-#     with get_db_connection() as conn:
-#         cursor = conn.cursor()
-#         cursor.execute(
-#             "UPDATE categories SET category = ? WHERE text = ? AND entity = ?",
-#             (new_category, text, entity),
-#         )
-#         conn.commit()
-#         return cursor.rowcount > 0
+def update_category_by_text_and_entity_db(
+    text: str, entity: str, new_category: str
+) -> bool:
+    """Updates a specific category rule by text and entity."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE categories SET category = ? WHERE text = ? AND entity = ?",
+            (new_category, text, entity),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def update_category_by_entity_db(entity: str, new_category: str) -> int:
+    """Updates the category for all rules matching a given entity."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE categories SET category = ? WHERE entity = ?",
+            (new_category, entity),
+        )
+        conn.commit()
+        return cursor.rowcount

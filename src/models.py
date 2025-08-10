@@ -44,19 +44,25 @@ class Category(BaseModel):
 
     text: str = Field(..., description="The text from the transaction description.")
     entity: str = Field(..., description="The entity from the transaction.")
-    category: str = Field(..., description="The assigned category.")
+    category: Optional[str] = Field(None, description="The assigned category.")
 
 
-# class TransactionUpdate(BaseModel):
-#     """
-#     Pydantic model for updating a transaction.
-#     """
+class CategoryUpdate(BaseModel):
+    """
+    Pydantic model for updating a category.
+    """
 
-#     text: Optional[str] = None
-#     entity: Optional[str] = None
-#     account: Optional[str] = None
-#     amount: Optional[float] = None
-#     date: Optional[datetime.date] = None
+    category: str = Field(..., description="The new category name.")
+
+
+class TransactionWithCategory(Transaction):
+    """
+    Pydantic model for a transaction that includes its category.
+    """
+
+    category: Optional[str] = Field(
+        None, description="The assigned category for the transaction."
+    )
 
 
 # class AccountUpdate(BaseModel):
