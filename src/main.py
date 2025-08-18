@@ -1,22 +1,21 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from .database import initialize_database
 from .routers import accounts, transactions, bank, categories
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    initialize_database()
+    yield  # teardown if needed
 
 
 # Initialize the FastAPI application
 app = FastAPI(
     title="DKBlytics: a modular API to your DKB banking",
     description="A simple API to track personal banking transactions and balances.",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("startup")
-def on_startup():
-    """
-    Initialize the database when the application starts.
-    """
-    initialize_database()
-
 
 # Include the routers to add the API endpoints
 app.include_router(transactions.router)
