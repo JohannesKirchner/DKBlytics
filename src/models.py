@@ -1,5 +1,5 @@
 import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
 
 # --- Pydantic Models for Data Validation ---
@@ -45,6 +45,20 @@ class PaginatedTransactions(BaseModel):
     total: int = Field(..., description="Total count of all relevant transactions.")
     limit: int = Field(..., description="Limit of all displayed transactions.")
     offset: int = Field(..., description="Offset of the first transaction.")
+
+
+class TransactionSummary(BaseModel):
+    key: Optional[str] = Field(
+        None,
+        description="Grouping key: category name when group_by=category (None means uncategorized), ",
+    )
+    amount_sum: float = Field(
+        ...,
+        description="Sum of transaction amounts in this group. Negative = net outflow, positive = net inflow.",
+    )
+    count: int = Field(
+        ..., ge=0, description="Number of transactions contributing to this group."
+    )
 
 
 class Account(BaseModel):

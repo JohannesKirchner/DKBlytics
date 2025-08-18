@@ -1,7 +1,13 @@
 from typing import List, Optional, Any, Tuple
 from datetime import date
 from .database import get_db_connection
-from .models import Transaction, TransactionWithCategory, Account, Category
+from .models import (
+    Transaction,
+    TransactionWithCategory,
+    TransactionSummary,
+    Account,
+    Category,
+)
 from .utils import make_fingerprint
 
 
@@ -82,7 +88,7 @@ def _build_tx_filters(
         params.append(str(date_from))  # store ISO yyyy-mm-dd
 
     if date_to:
-        clauses.append("t.date <= ?")
+        clauses.append("t.date < ?")
         params.append(str(date_to))
 
     where_sql = (" WHERE " + " AND ".join(clauses)) if clauses else ""
@@ -154,6 +160,55 @@ def get_all_transactions_db(
             )
         )
     return items
+
+
+def get_transactions_summary(
+    *,
+    group_by_category: bool = True,
+    text: Optional[str] = None,
+    account: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+) -> List[TransactionSummary]:
+    """
+    Returns totals grouped by category.
+    Category may be None (uncategorized).
+    """
+    where_sql, params = _build_tx_filters(
+        text=text, account=account, category=None, date_from=date_from, date_to=date_to
+    )
+
+    sql = (
+        "SELECT t.amount, c.category "
+        f"FROM transactions t "
+        "LEFT JOIN categories c ON t.text = c.text AND t.entity = c.entity"
+        f"{where_sql};"
+    )
+
+    with get_db_connection() as conn:
+        cur = conn.execute(sql, params)
+        rows = cur.fetchall()
+
+    totals: dict[Optional[str], TransactionSummary] = {}
+    for r in rows:
+        if group_by_category:
+            cat = r["category"]  # may be None
+        else:
+            cat = None
+
+        if cat not in totals:
+            totals[cat] = TransactionSummary(key=cat, amount_sum=0.0, count=0)
+        trow = totals[cat]
+        trow.amount_sum += r["amount"]
+        trow.count += 1
+
+    # Sort: by absolute sum descending (expenses/income mixed), then name
+    result = sorted(
+        totals.values(),
+        key=lambda x: (abs(x.amount_sum), x.key or ""),
+        reverse=True,
+    )
+    return result
 
 
 # --- Account CRUD Operations ---
