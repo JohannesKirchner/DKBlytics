@@ -1,12 +1,10 @@
-# routers/accounts.py
 from typing import List
-from fastapi import APIRouter, HTTPException  # , Body
-from ..models import Account  # , AccountUpdate
+from fastapi import APIRouter, HTTPException
+from ..models import Account
 from ..crud import (
     get_account_by_name,
     create_or_update_account,
     get_all_accounts_db,
-    # update_account_balance_db,
 )
 
 router = APIRouter(
@@ -43,15 +41,3 @@ def get_all_accounts():
     """
     accounts = get_all_accounts_db()
     return [Account(**dict(row)) for row in accounts]
-
-
-# @router.patch("/{account_name}", response_model=Account)
-# def update_account_balance(account_name: str, update_data: AccountUpdate = Body(...)):
-#     """
-#     Updates the balance for a specific account.
-#     """
-#     if not update_account_balance_db(account_name, update_data.balance):
-#         raise HTTPException(status_code=404, detail="Account not found")
-
-#     updated_account_data = get_account_by_name(account_name)
-#     return Account(**dict(updated_account_data))

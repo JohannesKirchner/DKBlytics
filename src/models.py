@@ -1,5 +1,5 @@
 import datetime
-from typing import Optional  # , List
+from typing import Optional
 from pydantic import BaseModel, Field
 
 # --- Pydantic Models for Data Validation ---
@@ -63,19 +63,3 @@ class TransactionWithCategory(Transaction):
     category: Optional[str] = Field(
         None, description="The assigned category for the transaction."
     )
-
-
-# class AccountUpdate(BaseModel):
-#     """
-#     Pydantic model for updating an account balance.
-#     """
-
-#     balance: float = Field(..., ge=0, description="The new balance amount.")
-
-
-# class CategoryUpdate(BaseModel):
-#     """
-#     Pydantic model for updating a category.
-#     """
-
-#     category: str = Field(..., description="The new category name.")

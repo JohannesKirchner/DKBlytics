@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi import APIRouter, HTTPException, Query
 from ..models import Category, CategoryUpdate
 from ..crud import (
     get_category_db,
