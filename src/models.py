@@ -1,5 +1,5 @@
 import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 # --- Pydantic Models for Data Validation ---
@@ -28,6 +28,25 @@ class Transaction(BaseModel):
     )
 
 
+class TransactionWithCategory(Transaction):
+    """
+    Pydantic model for a transaction that includes its category.
+    """
+
+    category: Optional[str] = Field(
+        None, description="The assigned category for the transaction."
+    )
+
+
+class PaginatedTransactions(BaseModel):
+    items: List[TransactionWithCategory] = Field(
+        ..., description="List of all relevant transactions whithin limits."
+    )
+    total: int = Field(..., description="Total count of all relevant transactions.")
+    limit: int = Field(..., description="Limit of all displayed transactions.")
+    offset: int = Field(..., description="Offset of the first transaction.")
+
+
 class Account(BaseModel):
     """
     Pydantic model for an account.
@@ -53,13 +72,3 @@ class CategoryUpdate(BaseModel):
     """
 
     category: str = Field(..., description="The new category name.")
-
-
-class TransactionWithCategory(Transaction):
-    """
-    Pydantic model for a transaction that includes its category.
-    """
-
-    category: Optional[str] = Field(
-        None, description="The assigned category for the transaction."
-    )

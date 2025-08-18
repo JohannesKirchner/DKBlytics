@@ -1,7 +1,7 @@
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Tuple
 from datetime import date
 from .database import get_db_connection
-from .models import Transaction, Account, Category
+from .models import Transaction, TransactionWithCategory, Account, Category
 from .utils import make_fingerprint
 
 
@@ -53,41 +53,107 @@ def create_transaction_db(transaction: Transaction) -> int:
         return cursor.lastrowid
 
 
-def get_all_transactions_db(
+def _build_tx_filters(
     text: Optional[str] = None,
     account: Optional[str] = None,
-    min_date: Optional[date] = None,
-    max_date: Optional[date] = None,
+    category: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+) -> Tuple[str, List[Any]]:
+    clauses = []
+    params: List[Any] = []
+
+    if text:
+        clauses.append("(t.text LIKE ? OR t.entity LIKE ?)")
+        like = f"%{text}%"
+        params.extend([like, like])
+
+    if account:
+        clauses.append("t.account = ?")
+        params.append(account)
+
+    if category:
+        # adjust if your schema stores category differently
+        clauses.append("c.category = ?")
+        params.append(category)
+
+    if date_from:
+        clauses.append("t.date >= ?")
+        params.append(str(date_from))  # store ISO yyyy-mm-dd
+
+    if date_to:
+        clauses.append("t.date <= ?")
+        params.append(str(date_to))
+
+    where_sql = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where_sql, params
+
+
+def count_transactions_db(
+    *,
+    text: Optional[str] = None,
+    account: Optional[str] = None,
+    category: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+) -> int:
+    where_sql, params = _build_tx_filters(text, account, category, date_from, date_to)
+    sql = f"SELECT COUNT(*) FROM transactions t{where_sql};"
+    with get_db_connection() as conn:
+        cur = conn.execute(sql, params)
+        (total,) = cur.fetchone()
+    return int(total)
+
+
+def get_all_transactions_db(
+    limit: int,
+    offset: int,
+    sort: str = "date_desc",
+    text: Optional[str] = None,
+    account: Optional[str] = None,
+    category: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
 ) -> List[dict]:
     """
     Retrieves all transactions with optional filtering,
     joining with the categories table to include the category.
     """
+    where_sql, params = _build_tx_filters(text, account, category, date_from, date_to)
+
+    if sort == "date_asc":
+        order_by = " ORDER BY date ASC, transaction_id ASC"
+    else:
+        order_by = " ORDER BY date DESC, transaction_id DESC"
+
+    sql = (
+        "SELECT t.*, c.category "
+        f"FROM transactions t "
+        "LEFT JOIN categories c ON t.text = c.text AND t.entity = c.entity"
+        f"{where_sql}"
+        f"{order_by} LIMIT ? OFFSET ?;"
+    )
+    params = params + [limit, offset]
+
     with get_db_connection() as conn:
-        cursor = conn.cursor()
-        query = """
-            SELECT t.*, c.category
-            FROM transactions t
-            LEFT JOIN categories c ON t.text = c.text AND t.entity = c.entity
-            WHERE 1=1
-        """
-        params = []
+        cur = conn.execute(sql, params)
+        rows = cur.fetchall()
 
-        if text:
-            query += " AND t.text LIKE ?"
-            params.append(f"%{text}%")
-        if account:
-            query += " AND t.account = ?"
-            params.append(account)
-        if min_date:
-            query += " AND t.date >= ?"
-            params.append(min_date)
-        if max_date:
-            query += " AND t.date <= ?"
-            params.append(max_date)
-
-        cursor.execute(query, params)
-        return cursor.fetchall()
+    items: List[TransactionWithCategory] = []
+    for r in rows:
+        items.append(
+            TransactionWithCategory(
+                transaction_id=r["transaction_id"],
+                text=r["text"],
+                entity=r["entity"],
+                account=r["account"],
+                amount=r["amount"],
+                date=r["date"],  # if stored as ISO yyyy-mm-dd; Pydantic will parse
+                reference=r["reference"],
+                category=r["category"],
+            )
+        )
+    return items
 
 
 # --- Account CRUD Operations ---
