@@ -1,10 +1,10 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from ..models import Category, CategoryRule
-from ..crud import (
-    get_category_rule_db,
+from ..services.categories import (
     create_category_db,
     get_all_categories_db,
+    get_category_rule_db,
     get_all_category_rules_db,
     update_category_rule_by_text_and_entity_db,
     update_category_rule_by_entity_db,
@@ -23,7 +23,7 @@ def create_category(name, parent_id):
     Adds a new category.
     """
     category_id = create_category_db(name, parent_id)
-    return category_id
+    return {"message": f"Created new category {name} with id {category_id}"}
 
 
 @router.get("/", response_model=List[Category])

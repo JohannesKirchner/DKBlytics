@@ -2,7 +2,7 @@ from typing import Optional, Literal, List
 from datetime import date
 from fastapi import APIRouter, HTTPException, Query
 from ..models import Transaction, PaginatedTransactions, TransactionSummary
-from ..crud import (
+from ..services.transactions import (
     get_transaction_by_id,
     create_transaction_db,
     get_all_transactions_db,
