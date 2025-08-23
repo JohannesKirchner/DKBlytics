@@ -52,14 +52,26 @@ def initialize_database():
             )
         """)
 
-        # Create categories table. The category can be NULL initially.
-        # The composite primary key on (text, entity) ensures uniqueness.
+        # Create categories table.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                parent_id INTEGER NULL,
+                FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE RESTRICT
+            )
+        """)
+        conn.commit()
+
+        # Create category_rules table. The category ID can be NULL initially.
+        # The composite primary key on (text, entity) ensures uniqueness.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS category_rules (
                 text TEXT NOT NULL,
                 entity TEXT NOT NULL,
-                category TEXT,
-                PRIMARY KEY (text, entity)
+                category_id INTEGER,
+                PRIMARY KEY (text, entity),
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
             )
         """)
         conn.commit()

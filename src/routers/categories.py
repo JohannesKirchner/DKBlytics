@@ -1,12 +1,13 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
-from ..models import Category, CategoryUpdate
+from ..models import Category, CategoryRule
 from ..crud import (
-    get_category_db,
-    create_or_update_category,
+    get_category_rule_db,
+    create_category_db,
     get_all_categories_db,
-    update_category_by_text_and_entity_db,
-    update_category_by_entity_db,
+    get_all_category_rules_db,
+    update_category_rule_by_text_and_entity_db,
+    update_category_rule_by_entity_db,
 )
 
 router = APIRouter(
@@ -16,33 +17,42 @@ router = APIRouter(
 )
 
 
-@router.post("/", response_model=Category, status_code=201)
-def create_category(category: Category):
+@router.post("/", status_code=201)
+def create_category(name, parent_id):
     """
-    Adds or updates a category rule.
+    Adds a new category.
     """
-    create_or_update_category(category)
-    return category
+    category_id = create_category_db(name, parent_id)
+    return category_id
 
 
 @router.get("/", response_model=List[Category])
-def get_all_categories(
+def get_all_categories():
+    """
+    Retrieves all existing categories.
+    """
+    categories = get_all_categories_db()
+    return [Category(**dict(row)) for row in categories]
+
+
+@router.get("rules/", response_model=List[CategoryRule])
+def get_all_category_rules(
     text: Optional[str] = Query(None, description="Filter by transaction text"),
     entity: Optional[str] = Query(None, description="Filter by transaction entity"),
 ):
     """
     Retrieves all existing categories.
     """
-    categories = get_all_categories_db(text=text, entity=entity)
-    return [Category(**dict(row)) for row in categories]
+    categories = get_all_category_rules_db(text=text, entity=entity)
+    return [CategoryRule(**dict(row)) for row in categories]
 
 
-@router.patch("/by-entity/{entity}")
-def update_categories_by_entity(entity: str, update_data: CategoryUpdate):
+@router.patch("rules/by-entity/{entity}")
+def update_category_rules_by_entity(entity: str, category_id: int):
     """
     Updates the category for all rules matching a given entity.
     """
-    updated_count = update_category_by_entity_db(entity, update_data.category)
+    updated_count = update_category_rule_by_entity_db(entity, category_id)
     if updated_count == 0:
         raise HTTPException(
             status_code=404, detail=f"No category rules found for entity '{entity}'"
@@ -52,15 +62,15 @@ def update_categories_by_entity(entity: str, update_data: CategoryUpdate):
     }
 
 
-@router.patch("/{text}/{entity}", response_model=Category)
-def update_category(text: str, entity: str, update_data: CategoryUpdate):
+@router.patch("rules/{text}/{entity}", response_model=CategoryRule)
+def update_category_rule(text: str, entity: str, category_id: int):
     """
     Updates the category name for a specific existing category rule.
     """
-    if not update_category_by_text_and_entity_db(text, entity, update_data.category):
+    if not update_category_rule_by_text_and_entity_db(text, entity, category_id):
         raise HTTPException(status_code=404, detail="Category rule not found")
 
-    updated_category_data = get_category_db(text, entity)
+    updated_category_data = get_category_rule_db(text, entity)
     if updated_category_data:
-        return Category(**dict(updated_category_data))
+        return CategoryRule(**dict(updated_category_data))
     raise HTTPException(status_code=404, detail="Category not found after update.")

@@ -6,7 +6,7 @@ from datetime import datetime
 from ..crud import (
     create_transaction_db,
     create_or_update_account,
-    create_category_if_not_exists,
+    create_category_rule_if_not_exists,
 )
 from ..models import Account, Transaction
 from collections import defaultdict
@@ -79,7 +79,7 @@ def update_from_bank():
             if create_transaction_db(tx_model):
                 new_transactions[account["name"]] += 1
                 # If the transaction is new, add its (text, entity) to categories
-                create_category_if_not_exists(tx_model.text, tx_model.entity)
+                create_category_rule_if_not_exists(tx_model.text, tx_model.entity)
 
     return {
         "message": f"Successfully updated transactions: {dict(new_transactions)}. New category rules may have been added."

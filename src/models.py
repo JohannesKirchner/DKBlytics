@@ -75,14 +75,16 @@ class Category(BaseModel):
     Pydantic model for a transaction category.
     """
 
+    id: int = Field(..., description="The assigned category id.")
+    name: str = Field(..., description="The name of the category.")
+    parent_id: Optional[int] = Field(None, description="The assigned parent id.")
+
+
+class CategoryRule(BaseModel):
+    """
+    Pydantic model for a transaction category rule.
+    """
+
     text: str = Field(..., description="The text from the transaction description.")
     entity: str = Field(..., description="The entity from the transaction.")
-    category: Optional[str] = Field(None, description="The assigned category.")
-
-
-class CategoryUpdate(BaseModel):
-    """
-    Pydantic model for updating a category.
-    """
-
-    category: str = Field(..., description="The new category name.")
+    category_id: Optional[int] = Field(None, description="The assigned category id.")

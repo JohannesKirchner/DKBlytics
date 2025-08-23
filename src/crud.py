@@ -1,4 +1,4 @@
-from typing import List, Optional, Any, Tuple
+from typing import List, Optional, Any, Tuple, Dict
 from datetime import date
 from .database import get_db_connection
 from .models import (
@@ -7,6 +7,7 @@ from .models import (
     TransactionSummary,
     Account,
     Category,
+    CategoryRule,
 )
 from .utils import make_fingerprint
 
@@ -256,50 +257,82 @@ def update_account_balance_db(account_name: str, new_balance: float) -> bool:
 # --- Category CRUD Operations ---
 
 
-def get_category_db(text: str, entity: str) -> Optional[dict]:
+def create_category_db(name: str, parent_id: Optional[int]) -> int:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO categories(name, parent_id) VALUES (?, ?);",
+            (name, parent_id),
+        )
+        conn.commit()
+
+        return cursor.fetchone()
+
+
+def get_all_categories_db() -> List[Category]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name, parent_id FROM categories;")
+        rows = cursor.fetchall()
+
+        return [Category(**dict(row)) for row in rows]
+
+
+def build_category_tree(nodes: List[Category]) -> List[Dict]:
+    # Build a nested tree in Python for the GET /categories/tree endpoint
+    by_id = {n.id: {"id": n.id, "name": n.name, "children": []} for n in nodes}
+    roots: List[Dict] = []
+    for n in nodes:
+        node = by_id[n.id]
+        if n.parent_id and n.parent_id in by_id:
+            by_id[n.parent_id]["children"].append(node)
+        else:
+            roots.append(node)
+
+    # stable sort children by name
+    def sort_subtree(sub):
+        sub["children"].sort(key=lambda x: x["name"].lower())
+        for ch in sub["children"]:
+            sort_subtree(ch)
+
+    for r in roots:
+        sort_subtree(r)
+    return roots
+
+
+def get_category_rule_db(text: str, entity: str) -> Optional[CategoryRule]:
     """Retrieves a category by text and entity."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM categories WHERE text = ? AND entity = ?", (text, entity)
+            "SELECT * FROM category_rules WHERE text = ? AND entity = ?", (text, entity)
         )
         return cursor.fetchone()
 
 
-def create_category_if_not_exists(text: str, entity: str) -> None:
+def create_category_rule_if_not_exists(text: str, entity: str) -> None:
     """
     Adds a new category rule with a null category if it doesn't already exist.
-    Existing categories are not touched.
+    Existing category rules are not touched.
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT OR IGNORE INTO categories (text, entity, category) VALUES (?, ?, NULL)",
+            "INSERT OR IGNORE INTO category_rules (text, entity, category_id) VALUES (?, ?, NULL)",
             (text, entity),
         )
         conn.commit()
 
 
-def create_or_update_category(category: Category) -> None:
-    """Adds or updates a category."""
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR REPLACE INTO categories (text, entity, category) VALUES (?, ?, ?)",
-            (category.text, category.entity, category.category),
-        )
-        conn.commit()
-
-
-def get_all_categories_db(
+def get_all_category_rules_db(
     text: Optional[str] = None, entity: Optional[str] = None
-) -> List[dict]:
-    """Retrieves all categories."""
+) -> List[CategoryRule]:
+    """Retrieves all category rules."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
 
         query = """
-            SELECT * FROM categories WHERE 1=1
+            SELECT * FROM category_rules WHERE 1=1
         """
         params = []
 
@@ -314,27 +347,27 @@ def get_all_categories_db(
         return cursor.fetchall()
 
 
-def update_category_by_text_and_entity_db(
-    text: str, entity: str, new_category: str
+def update_category_rule_by_text_and_entity_db(
+    text: str, entity: str, category_id: int
 ) -> bool:
     """Updates a specific category rule by text and entity."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE categories SET category = ? WHERE text = ? AND entity = ?",
-            (new_category, text, entity),
+            "UPDATE category_rules SET category_id = ? WHERE text = ? AND entity = ?",
+            (category_id, text, entity),
         )
         conn.commit()
         return cursor.rowcount > 0
 
 
-def update_category_by_entity_db(entity: str, new_category: str) -> int:
+def update_category_rule_by_entity_db(entity: str, category_id: int) -> int:
     """Updates the category for all rules matching a given entity."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE categories SET category = ? WHERE entity = ?",
-            (new_category, entity),
+            "UPDATE category_rules SET category_id = ? WHERE entity = ?",
+            (category_id, entity),
         )
         conn.commit()
         return cursor.rowcount
