@@ -1,4 +1,4 @@
-from datetime import date
+import datetime as dt
 from hashlib import sha1
 from decimal import Decimal
 from typing import Optional
@@ -9,8 +9,8 @@ def make_fingerprint(
     entity: str,
     account: str,
     amount: Decimal,
-    date_: date,
+    date: dt.date,
     reference: Optional[str],
 ) -> str:
-    raw = f"{text}|{entity}|{amount}|{account}|{date_.isoformat()}|{reference}".encode()
+    raw = f"{text}|{entity}|{amount}|{account}|{date.isoformat()}|{reference}".encode()
     return sha1(raw).hexdigest()

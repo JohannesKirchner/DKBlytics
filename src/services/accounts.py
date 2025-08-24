@@ -1,34 +1,29 @@
 from typing import List, Optional
-from ..database import get_db_connection
-from ..models import Account
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..models import Account as AccountORM
+from ..schemas import Account
 
 
-def get_account_by_name(account_name: str) -> Optional[dict]:
-    """Retrieves the balance for a specific account."""
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM accounts WHERE name = ?", (account_name,))
-
-        return cursor.fetchone()
-
-
-def create_or_update_account(account: Account) -> None:
-    """Adds or updates an account."""
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR REPLACE INTO accounts (name, balance) VALUES (?, ?)",
-            (account.name, account.balance),
-        )
-        conn.commit()
-
-        return cursor.lastrowid
+def create_or_update_account(db: Session, account: Account) -> Account:
+    obj = db.scalar(select(AccountORM).where(AccountORM.name == account.name))
+    if obj is None:
+        obj = AccountORM(name=account.name, balance=account.balance)
+        db.add(obj)
+        db.flush()  # assigns obj.id
+    else:
+        obj.balance = account.balance
+        db.flush()  # assigns obj.id
+    return Account.model_validate(obj)
 
 
-def get_all_accounts_db() -> List[dict]:
-    """Retrieves all accounts."""
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM accounts")
+def get_account_by_name(db: Session, account_name: str) -> Optional[Account]:
+    obj = db.scalar(select(AccountORM).where(AccountORM.name == account_name))
+    return Account.model_validate(obj) if obj else None
 
-        return cursor.fetchall()
+
+def get_all_accounts_db(db: Session) -> List[Account]:
+    rows = db.scalars(select(AccountORM).order_by(AccountORM.name.asc())).all()
+    return [Account.model_validate(r) for r in rows]

@@ -1,7 +1,9 @@
 from typing import Optional, Literal, List
 from datetime import date
-from fastapi import APIRouter, HTTPException, Query
-from ..models import Transaction, PaginatedTransactions, TransactionSummary
+from fastapi import APIRouter, HTTPException, Query, Depends
+from sqlalchemy.orm import Session
+from ..database import get_db
+from ..schemas import Transaction, PaginatedTransactions, TransactionSummary
 from ..services.transactions import (
     get_transaction_by_id,
     create_transaction_db,
@@ -18,11 +20,11 @@ router = APIRouter(
 
 
 @router.post("/", response_model=Transaction, status_code=201)
-def create_transaction(transaction: Transaction):
+def create_transaction(transaction: Transaction, db: Session = Depends(get_db)):
     """
     Adds a new transaction to the database.
     """
-    transaction_id = create_transaction_db(transaction)
+    transaction_id = create_transaction_db(db, transaction)
     return {**transaction.dict(), "transaction_id": transaction_id}
 
 
@@ -30,7 +32,7 @@ def create_transaction(transaction: Transaction):
 def get_all_transactions(
     limit: int = Query(50, ge=1, le=200, description="Max transactions to return"),
     offset: int = Query(0, ge=0, description="Number of transactions to skip"),
-    sort: Literal["date_desc", "date_asc"] = Query("date_desc"),
+    sort_by: Literal["date_desc", "date_asc"] = Query("date_desc"),
     text: Optional[str] = Query(None, description="Filter by transaction text"),
     category: Optional[str] = Query(None, description="Filter by category"),
     account: Optional[str] = Query(None, description="Filter by account name"),
@@ -40,14 +42,16 @@ def get_all_transactions(
     date_to: Optional[date] = Query(
         None, description="Filter by maximum date (YYYY-MM-DD)"
     ),
+    db: Session = Depends(get_db),
 ):
     """
     Retrieves all transactions with their assigned category, with optional filtering.
     """
     transactions = get_all_transactions_db(
+        db,
         limit=limit,
         offset=offset,
-        sort=sort,
+        sort_by=sort_by,
         text=text,
         account=account,
         category=category,
@@ -55,6 +59,7 @@ def get_all_transactions(
         date_to=date_to,
     )
     total = count_transactions_db(
+        db,
         text=text,
         account=account,
         category=category,
@@ -85,6 +90,7 @@ def transactions_summary(
     date_to: Optional[date] = Query(
         None, description="Filter by maximum date (YYYY-MM-DD)"
     ),
+    db: Session = Depends(get_db),
 ):
     """
     Response shape:
@@ -94,6 +100,7 @@ def transactions_summary(
     ]
     """
     return get_transactions_summary(
+        db,
         group_by_category=group_by_category,
         text=text,
         account=account,
@@ -103,11 +110,11 @@ def transactions_summary(
 
 
 @router.get("/{transaction_id}", response_model=Transaction)
-def get_transaction(transaction_id: int):
+def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
     """
     Retrieves a single transaction by its ID.
     """
-    transaction_data = get_transaction_by_id(transaction_id)
+    transaction_data = get_transaction_by_id(db, transaction_id)
     if transaction_data:
         return Transaction(**dict(transaction_data))
     raise HTTPException(status_code=404, detail="Transaction not found")

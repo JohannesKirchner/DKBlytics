@@ -1,6 +1,8 @@
 from typing import List
-from fastapi import APIRouter, HTTPException
-from ..models import Account
+from fastapi import APIRouter, HTTPException, Depends, status
+from sqlalchemy.orm import Session
+from ..schemas import Account
+from ..database import get_db
 from ..services.accounts import (
     get_account_by_name,
     create_or_update_account,
@@ -14,38 +16,33 @@ router = APIRouter(
 )
 
 
-@router.post("/", status_code=201)
-def create_account(account: Account):
+@router.post("/", response_model=Account, status_code=status.HTTP_201_CREATED)
+def create_account(account: Account, db: Session = Depends(get_db)) -> Account:
     """
     Adds a new account. If the account already exists, it is updated.
     """
-    old_account = get_account_by_name(account.name)
-    account_id = create_or_update_account(account)
-    if old_account.name == account.name:
-        message = f"Successfully updated Account {old_account.name} (ID: {account_id})."
-    else:
-        message = f"Created new Account {account.name} (ID: {account_id})."
-
-    return {"message": message}
+    return create_or_update_account(db, account)
 
 
 @router.get("/{account_name}", response_model=Account)
-def get_account(account_name: str):
+def get_account(account_name: str, db: Session = Depends(get_db)) -> Account:
     """
     Retrieves a specific account.
     """
-    account_data = get_account_by_name(account_name)
-    if account_data:
-        return Account(**dict(account_data))
+    account = get_account_by_name(db, account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Account not found"
+        )
 
-    raise HTTPException(status_code=404, detail="Account not found")
+    return account
 
 
 @router.get("/", response_model=List[Account])
-def get_all_accounts():
+def get_all_accounts(db: Session = Depends(get_db)) -> List[Account]:
     """
     Retrieves all accounts.
     """
-    accounts = get_all_accounts_db()
+    accounts = get_all_accounts_db(db)
 
-    return [Account(**dict(row)) for row in accounts]
+    return accounts

@@ -1,90 +1,90 @@
-import datetime
-from typing import Optional, List, Literal
-from pydantic import BaseModel, Field
+from __future__ import annotations
 
-# --- Pydantic Models for Data Validation ---
+import datetime as dt
+from decimal import Decimal
+from typing import List, Optional
+
+from sqlalchemy import (
+    Date,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    Numeric,
+    Index,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
-class Transaction(BaseModel):
-    """
-    Pydantic model for a transaction.
-    """
+class Base(DeclarativeBase):
+    pass
 
-    text: str = Field(..., description="The description text of the transaction.")
-    entity: str = Field(
-        ..., description="The entity receiving or issuing the transaction."
+
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), default=Decimal("0"), nullable=False
     )
-    account: str = Field(..., description="The account the transaction belongs to.")
-    amount: float = Field(..., description="The transaction amount.")
-    date: datetime.date = Field(
-        ..., description="The date of the transaction in YYYY-MM-DD format."
-    )
-    reference: str | None = Field(..., description="Customer reference")
-    fingerprint: Optional[str] = Field(
-        None, description="Unique fingerprint for each transaction"
-    )
-    transaction_id: Optional[int] = Field(
-        None, description="The unique ID of the transaction."
-    )
 
-
-class TransactionWithCategory(Transaction):
-    """
-    Pydantic model for a transaction that includes its category.
-    """
-
-    category: Optional[str] = Field(
-        None, description="The assigned category for the transaction."
+    transactions: Mapped[List[Transaction]] = relationship(
+        back_populates="account", cascade="all,delete-orphan"
     )
 
 
-class PaginatedTransactions(BaseModel):
-    items: List[TransactionWithCategory] = Field(
-        ..., description="List of all relevant transactions whithin limits."
-    )
-    total: int = Field(..., description="Total count of all relevant transactions.")
-    limit: int = Field(..., description="Limit of all displayed transactions.")
-    offset: int = Field(..., description="Offset of the first transaction.")
+class Category(Base):
+    __tablename__ = "categories"
 
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("categories.id", ondelete="RESTRICT"), nullable=True
+    )
 
-class TransactionSummary(BaseModel):
-    key: Optional[str] = Field(
-        None,
-        description="Grouping key: category name when group_by=category (None means uncategorized), ",
-    )
-    amount_sum: float = Field(
-        ...,
-        description="Sum of transaction amounts in this group. Negative = net outflow, positive = net inflow.",
-    )
-    count: int = Field(
-        ..., ge=0, description="Number of transactions contributing to this group."
+    parent: Mapped[Optional[Category]] = relationship(
+        remote_side="Category.id", backref="children"
     )
 
 
-class Account(BaseModel):
-    """
-    Pydantic model for an account.
-    """
+class CategoryRule(Base):
+    __tablename__ = "category_rules"
 
-    name: str = Field(..., description="The name of the account.")
-    balance: float = Field(..., ge=0, description="The current balance of the account.")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    text: Mapped[str] = mapped_column(String(500))
+    entity: Mapped[str] = mapped_column(String(500))
+    category_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("categories.id", ondelete="RESTRICT"), nullable=True
+    )
+
+    category: Mapped[Optional[Category]] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("text", "entity", name="uq_category_rules_text_entity"),
+        Index("ix_category_rules_text", "text"),
+        Index("ix_category_rules_entity", "entity"),
+    )
 
 
-class Category(BaseModel):
-    """
-    Pydantic model for a transaction category.
-    """
+class Transaction(Base):
+    __tablename__ = "transactions"
 
-    id: int = Field(..., description="The assigned category id.")
-    name: str = Field(..., description="The name of the category.")
-    parent_id: Optional[int] = Field(None, description="The assigned parent id.")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    text: Mapped[str] = mapped_column(String(1000))
+    entity: Mapped[str] = mapped_column(String(500))
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT")
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    date: Mapped[dt.date] = mapped_column(Date)
+    reference: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True, index=True)
 
+    account: Mapped[Account] = relationship(back_populates="transactions")
 
-class CategoryRule(BaseModel):
-    """
-    Pydantic model for a transaction category rule.
-    """
-
-    text: str = Field(..., description="The text from the transaction description.")
-    entity: str = Field(..., description="The entity from the transaction.")
-    category_id: Optional[int] = Field(None, description="The assigned category id.")
+    __table_args__ = (
+        Index("ix_transactions_date", "date"),
+        Index("ix_transactions_entity", "entity"),
+        Index("ix_transactions_account_id", "account_id"),
+    )

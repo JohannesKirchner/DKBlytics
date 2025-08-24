@@ -2,10 +2,11 @@ import os
 from dotenv import load_dotenv
 from dkb_robo import DKBRobo
 from datetime import datetime
+from sqlalchemy.orm import Session
 from ..services.transactions import create_transaction_db
 from ..services.categories import create_category_rule_if_not_exists
 from ..services.accounts import create_or_update_account
-from ..models import Account, Transaction
+from ..schemas import Account, Transaction
 from collections import defaultdict
 
 
@@ -41,7 +42,7 @@ def fetch_bank_data():
     return accounts, account_transactions
 
 
-def get_new_transactions():
+def get_new_transactions(db: Session):
     """
     Connects to a bank API, fetches new transactions, adds them to the database,
     and creates placeholder categories for new (text, entity) pairs.
@@ -52,7 +53,7 @@ def get_new_transactions():
     for account, transactions in zip(accounts, account_transactions):
         try:
             create_or_update_account(
-                Account(name=account["name"], balance=account["amount"])
+                db, Account(name=account["name"], balance=account["amount"])
             )
         except KeyError:
             print(f"Account {account['name']} does not have a balance field.")
@@ -67,9 +68,9 @@ def get_new_transactions():
                 date=transaction["date"],
                 reference=transaction["customerreference"],
             )
-            if create_transaction_db(tx_model):
+            if create_transaction_db(db, tx_model):
                 new_transactions[account["name"]] += 1
                 # If the transaction is new, add its (text, entity) to categories
-                create_category_rule_if_not_exists(tx_model.text, tx_model.entity)
+                create_category_rule_if_not_exists(db, tx_model.text, tx_model.entity)
 
     return new_transactions

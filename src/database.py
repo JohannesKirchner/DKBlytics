@@ -1,77 +1,42 @@
-import sqlite3
-from contextlib import contextmanager
+import os
+from dotenv import load_dotenv
 from pathlib import Path
+from typing import Iterator
+from .models import Base
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
 
 
-DATABASE_ROOT = "data"
-DATABASE_NAME = "banking.db"
+# SQLite URL (file)
+load_dotenv()
+DB_PATH = Path(os.getenv("DB_PATH")).resolve()
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
+
+# Engine (check_same_thread=False for SQLite in FastAPI sync handlers)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+)
+
+# Session factory
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
-@contextmanager
-def get_db_connection():
-    """
-    Context manager to get a database connection.
-    Ensures the connection is closed properly.
-    """
-    db_filepath = Path(DATABASE_ROOT) / DATABASE_NAME
-
-    conn = sqlite3.connect(db_filepath)
-    conn.row_factory = sqlite3.Row  # This allows accessing columns by name
+def get_db() -> Iterator[Session]:
+    db: Session = SessionLocal()
     try:
-        yield conn
+        yield db
+        db.commit()
+    except:
+        db.rollback()
+        raise
     finally:
-        conn.close()
+        db.close()
 
 
-def initialize_database():
-    """
-    Creates the transactions, accounts, and categories tables if they don't exist.
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+def initialize_database() -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-        # Create transactions table with the new schema
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS transactions (
-                transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                text TEXT NOT NULL,
-                entity TEXT NOT NULL,
-                account TEXT NOT NULL,
-                amount REAL NOT NULL,
-                date TEXT NOT NULL,
-                reference TEXT,
-                fingerprint TEXT NOT NULL
-            )
-        """)
-
-        # Create accounts table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS accounts (
-                name TEXT PRIMARY KEY,
-                balance REAL NOT NULL
-            )
-        """)
-
-        # Create categories table.
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                parent_id INTEGER NULL,
-                FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE RESTRICT
-            )
-        """)
-        conn.commit()
-
-        # Create category_rules table. The category ID can be NULL initially.
-        # The composite primary key on (text, entity) ensures uniqueness.
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS category_rules (
-                text TEXT NOT NULL,
-                entity TEXT NOT NULL,
-                category_id INTEGER,
-                PRIMARY KEY (text, entity),
-                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
-            )
-        """)
-        conn.commit()
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as create_all_err:
+        raise RuntimeError(f"fallback create_all error: {create_all_err!r}")
