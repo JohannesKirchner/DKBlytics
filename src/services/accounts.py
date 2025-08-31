@@ -4,10 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Account as AccountORM
-from ..schemas import Account
+from ..schemas import Account, AccountCreate
 
 
-def create_or_update_account(db: Session, account: Account) -> Account:
+def create_or_update_account(db: Session, account: AccountCreate) -> Account:
     obj = db.scalar(select(AccountORM).where(AccountORM.name == account.name))
     if obj is None:
         obj = AccountORM(name=account.name, balance=account.balance)

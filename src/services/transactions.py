@@ -11,6 +11,7 @@ from ..models import (
 )
 from ..schemas import (
     Transaction,
+    TransactionCreate,
     TransactionSummary,
 )
 from ..utils import make_fingerprint
@@ -19,29 +20,34 @@ from ..utils import make_fingerprint
 def _to_tx_schema(
     row: Tuple[TransactionORM, Optional[str], Optional[int]],
 ) -> Transaction:
-    tx, account_name, _ = (
-        row  # third part may be category_id (not exposed directly here)
-    )
+    if len(row) == 3:
+        tx, account_name, _ = (
+            row  # third part may be category_id (not exposed directly here)
+        )
+    else:
+        tx, account_name = (
+            row  # third part may be category_id (not exposed directly here)
+        )
     return Transaction(
         id=tx.id,
         text=tx.text,
         entity=tx.entity,
-        account=account_name or "",  # preserve API shape as account name
+        account=account_name,  # preserve API shape as account name
         amount=tx.amount,
         date=tx.date,
         reference=tx.reference,
+        fingerprint=tx.fingerprint,
     )
 
 
-def create_transaction_db(db: Session, tx: Transaction) -> bool:
+def create_transaction_db(db: Session, tx: TransactionCreate) -> bool:
     # ensure account exists (by name)
     acct = db.execute(
         select(AccountORM).where(AccountORM.name == tx.account)
     ).scalar_one_or_none()
     if acct is None:
-        acct = AccountORM(name=tx.account, balance=0)
-        db.add(acct)
-        db.flush()  # get id
+        db.rollback()
+        raise ValueError(f"An account with name {tx.account} does not exist")
 
     fingerprint = make_fingerprint(
         tx.text, tx.entity, tx.account, tx.amount, tx.date, tx.reference
@@ -52,7 +58,7 @@ def create_transaction_db(db: Session, tx: Transaction) -> bool:
     ).first()
     if exists:
         db.rollback()  # in case we created an account in this transaction intentionally keep it
-        return False
+        raise ValueError(f"The transaction is {tx} is likely a duplicate")
 
     obj = TransactionORM(
         text=tx.text,
@@ -64,8 +70,18 @@ def create_transaction_db(db: Session, tx: Transaction) -> bool:
         fingerprint=fingerprint,
     )
     db.add(obj)
+    db.flush()
 
-    return True
+    return Transaction(
+        id=obj.id,
+        text=obj.text,
+        entity=obj.entity,
+        account=acct.name,
+        amount=obj.amount,
+        date=obj.date,
+        reference=obj.reference,
+        fingerprint=obj.fingerprint,
+    )
 
 
 def get_transaction_by_id(db: Session, tx_id: int) -> Optional[Transaction]:
@@ -83,6 +99,7 @@ def get_transaction_by_id(db: Session, tx_id: int) -> Optional[Transaction]:
 def _filters_stmt(
     *,
     text: Optional[str],
+    entity: Optional[str],
     category: Optional[str],
     account: Optional[str],
     date_from: Optional[date],
@@ -93,6 +110,8 @@ def _filters_stmt(
     filters = []
     if text:
         filters.append(TransactionORM.text == text)
+    if entity:
+        filters.append(TransactionORM.entity == entity)
     if account:
         filters.append(AccountORM.name == account)
     if date_from:
@@ -123,6 +142,7 @@ def count_transactions_db(
     db: Session,
     *,
     text: Optional[str] = None,
+    entity: Optional[str] = None,
     category: Optional[str] = None,
     account: Optional[str] = None,
     date_from: Optional[date] = None,
@@ -131,6 +151,7 @@ def count_transactions_db(
 ) -> int:
     filters = _filters_stmt(
         text=text,
+        entity=entity,
         category=category,
         account=account,
         date_from=date_from,
@@ -152,6 +173,7 @@ def get_all_transactions_db(
     offset: int,
     sort_by: str = "date_desc",
     text: Optional[str] = None,
+    entity: Optional[str] = None,
     category: Optional[str] = None,
     account: Optional[str] = None,
     date_from: Optional[date] = None,
@@ -160,6 +182,7 @@ def get_all_transactions_db(
 ) -> List[Transaction]:
     filters = _filters_stmt(
         text=text,
+        entity=entity,
         category=category,
         account=account,
         date_from=date_from,
@@ -207,6 +230,7 @@ def get_transactions_summary(
 ) -> TransactionSummary:
     filters = _filters_stmt(
         text=None,
+        entity=None,
         category=None,
         account=account,
         date_from=date_from,

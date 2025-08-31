@@ -4,9 +4,10 @@ from dkb_robo import DKBRobo
 from datetime import datetime
 from sqlalchemy.orm import Session
 from ..services.transactions import create_transaction_db
-from ..services.categories import create_category_rule_if_not_exists
+
+# from ..services.categories import create_category_rule_if_not_exists
 from ..services.accounts import create_or_update_account
-from ..schemas import Account, Transaction
+from ..schemas import Account, AccountCreate, Transaction
 from collections import defaultdict
 
 
@@ -53,7 +54,7 @@ def get_new_transactions(db: Session):
     for account, transactions in zip(accounts, account_transactions):
         try:
             create_or_update_account(
-                db, Account(name=account["name"], balance=account["amount"])
+                db, AccountCreate(name=account["name"], balance=account["amount"])
             )
         except KeyError:
             print(f"Account {account['name']} does not have a balance field.")
@@ -71,6 +72,6 @@ def get_new_transactions(db: Session):
             if create_transaction_db(db, tx_model):
                 new_transactions[account["name"]] += 1
                 # If the transaction is new, add its (text, entity) to categories
-                create_category_rule_if_not_exists(db, tx_model.text, tx_model.entity)
+                # create_category_rule_if_not_exists(db, tx_model.text, tx_model.entity)
 
     return new_transactions

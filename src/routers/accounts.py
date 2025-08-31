@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
-from ..schemas import Account
+from ..schemas import Account, AccountCreate
 from ..database import get_db
 from ..services.accounts import (
     get_account_by_name,
@@ -17,7 +17,7 @@ router = APIRouter(
 
 
 @router.post("/", response_model=Account, status_code=status.HTTP_201_CREATED)
-def create_account(account: Account, db: Session = Depends(get_db)) -> Account:
+def create_account(account: AccountCreate, db: Session = Depends(get_db)) -> Account:
     """
     Adds a new account. If the account already exists, it is updated.
     """

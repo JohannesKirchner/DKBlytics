@@ -3,7 +3,12 @@ from datetime import date
 from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..schemas import Transaction, PaginatedTransactions, TransactionSummary
+from ..schemas import (
+    Transaction,
+    TransactionCreate,
+    PaginatedTransactions,
+    TransactionSummary,
+)
 from ..services.transactions import (
     get_transaction_by_id,
     create_transaction_db,
@@ -20,12 +25,12 @@ router = APIRouter(
 
 
 @router.post("/", response_model=Transaction, status_code=201)
-def create_transaction(transaction: Transaction, db: Session = Depends(get_db)):
+def create_transaction(transaction: TransactionCreate, db: Session = Depends(get_db)):
     """
     Adds a new transaction to the database.
     """
-    transaction_id = create_transaction_db(db, transaction)
-    return {**transaction.dict(), "transaction_id": transaction_id}
+    db_transaction = create_transaction_db(db, transaction)
+    return db_transaction
 
 
 @router.get("/", response_model=PaginatedTransactions)
@@ -34,6 +39,7 @@ def get_all_transactions(
     offset: int = Query(0, ge=0, description="Number of transactions to skip"),
     sort_by: Literal["date_desc", "date_asc"] = Query("date_desc"),
     text: Optional[str] = Query(None, description="Filter by transaction text"),
+    entity: Optional[str] = Query(None, description="Filter by transaction entity"),
     category: Optional[str] = Query(None, description="Filter by category"),
     account: Optional[str] = Query(None, description="Filter by account name"),
     date_from: Optional[date] = Query(
@@ -53,6 +59,7 @@ def get_all_transactions(
         offset=offset,
         sort_by=sort_by,
         text=text,
+        entity=entity,
         account=account,
         category=category,
         date_from=date_from,
@@ -61,6 +68,7 @@ def get_all_transactions(
     total = count_transactions_db(
         db,
         text=text,
+        entity=entity,
         account=account,
         category=category,
         date_from=date_from,

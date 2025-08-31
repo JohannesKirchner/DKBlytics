@@ -44,7 +44,10 @@ class Category(Base):
     )
 
     parent: Mapped[Optional[Category]] = relationship(
-        remote_side="Category.id", backref="children"
+        "Category",
+        remote_side=[id],
+        foreign_keys=[parent_id],
+        backref="children",
     )
 
 
@@ -52,10 +55,10 @@ class CategoryRule(Base):
     __tablename__ = "category_rules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    text: Mapped[str] = mapped_column(String(500))
+    text: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     entity: Mapped[str] = mapped_column(String(500))
     category_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("categories.id", ondelete="RESTRICT"), nullable=True
+        ForeignKey("categories.id", ondelete="RESTRICT")
     )
 
     category: Mapped[Optional[Category]] = relationship()
