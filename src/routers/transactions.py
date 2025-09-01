@@ -1,5 +1,7 @@
+from datetime import datetime as dt
 from typing import Optional, Literal, List
 from datetime import date
+from hashlib import sha1
 from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.orm import Session
 from ..database import get_db
@@ -29,7 +31,8 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
     """
     Adds a new transaction to the database.
     """
-    db_transaction = create_transaction_db(db, transaction)
+    batch_hash = sha1(str(dt.now()).encode()).hexdigest()
+    db_transaction = create_transaction_db(db, transaction, batch_hash)
     return db_transaction
 
 

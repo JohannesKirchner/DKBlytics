@@ -15,7 +15,7 @@ def create_category_db(db: Session, category: CategoryCreate) -> Category:
     if category.parent_name and (parent_obj is None):
         db.rollback()
         raise ValueError(
-            f"A parent category with name {category["parent"]} does not exist"
+            f"A parent category with name {category['parent_name']} does not exist"
         )
 
     obj = CategoryORM(
