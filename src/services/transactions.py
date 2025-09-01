@@ -40,7 +40,7 @@ def _to_tx_schema(
     )
 
 
-def create_transaction_db(db: Session, tx: TransactionCreate) -> bool:
+def create_transaction_db(db: Session, tx: TransactionCreate, batch_hash) -> bool:
     # ensure account exists (by name)
     acct = db.execute(
         select(AccountORM).where(AccountORM.name == tx.account)
@@ -54,11 +54,15 @@ def create_transaction_db(db: Session, tx: TransactionCreate) -> bool:
     )
 
     exists = db.execute(
-        select(TransactionORM.id).where(TransactionORM.fingerprint == fingerprint)
+        select(TransactionORM.id).where(
+            TransactionORM.fingerprint == fingerprint,
+            TransactionORM.batch_hash != batch_hash,
+        )
     ).first()
     if exists:
-        db.rollback()  # in case we created an account in this transaction intentionally keep it
-        raise ValueError(f"The transaction is {tx} is likely a duplicate")
+        # db.rollback()  # in case we created an account in this transaction intentionally keep it
+        # raise ValueError(f"The transaction is {tx} is likely a duplicate")
+        return False
 
     obj = TransactionORM(
         text=tx.text,
@@ -68,6 +72,7 @@ def create_transaction_db(db: Session, tx: TransactionCreate) -> bool:
         date=tx.date,
         reference=tx.reference,
         fingerprint=fingerprint,
+        batch_hash=batch_hash,
     )
     db.add(obj)
     db.flush()

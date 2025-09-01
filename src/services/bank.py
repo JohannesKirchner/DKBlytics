@@ -1,5 +1,7 @@
 import os
+import datetime as dt
 from dotenv import load_dotenv
+from hashlib import sha1
 from dkb_robo import DKBRobo
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -48,6 +50,7 @@ def get_new_transactions(db: Session):
     Connects to a bank API, fetches new transactions, adds them to the database,
     and creates placeholder categories for new (text, entity) pairs.
     """
+    batch_hash = sha1(str(dt.datetime.now()).encode()).hexdigest()
     accounts, account_transactions = fetch_bank_data()
 
     new_transactions = defaultdict(int)
@@ -69,7 +72,7 @@ def get_new_transactions(db: Session):
                 date=transaction["date"],
                 reference=transaction["customerreference"],
             )
-            if create_transaction_db(db, tx_model):
+            if create_transaction_db(db, tx_model, batch_hash):
                 new_transactions[account["name"]] += 1
                 # If the transaction is new, add its (text, entity) to categories
                 # create_category_rule_if_not_exists(db, tx_model.text, tx_model.entity)

@@ -82,7 +82,8 @@ class Transaction(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     date: Mapped[dt.date] = mapped_column(Date)
     reference: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
-    fingerprint: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    batch_hash: Mapped[str] = mapped_column(String(64), index=True)
 
     account: Mapped[Account] = relationship(back_populates="transactions")
 
