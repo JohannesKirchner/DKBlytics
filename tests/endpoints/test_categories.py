@@ -35,3 +35,25 @@ def test_get_category_by_name(client, payload):
 
     assert response.status_code == 200, response.text
     assert response_data["parent_name"] == payload["parent_name"]
+
+
+@pytest.mark.order(23)
+@pytest.mark.parametrize(
+    "category_name",
+    [
+        pytest.param(None, id="No_Category_Name"),
+        pytest.param("Expense", id="Expense"),
+        pytest.param("Mobility", id="Mobility"),
+    ],
+)
+def test_get_category_tree(client, category_name):
+    if category_name is None:
+        response = client.get("/categories/tree")
+    else:
+        response = client.get(f"/categories/tree?name={category_name}")
+    response_data = response.json()
+
+    assert response.status_code == 200, response.text
+
+    expected_categories = [c for c in CATEGORIES if c["parent_name"] == category_name]
+    assert len(expected_categories) == len(response_data)
