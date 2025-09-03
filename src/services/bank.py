@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from ..services.transactions import create_transaction_db
 
 # from ..services.categories import create_category_rule_if_not_exists
-from ..services.accounts import create_or_update_account
-from ..schemas import Account, AccountCreate, Transaction
+from ..services.accounts import create_account_db, update_account_db
+from ..schemas import AccountCreate, Transaction
 from collections import defaultdict
 
 
@@ -56,7 +56,7 @@ def get_new_transactions(db: Session):
     new_transactions = defaultdict(int)
     for account, transactions in zip(accounts, account_transactions):
         try:
-            create_or_update_account(
+            create_account_db(
                 db, AccountCreate(name=account["name"], balance=account["amount"])
             )
         except KeyError:

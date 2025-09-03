@@ -12,3 +12,7 @@ class Conflict(ServiceError):
 
 class Ambiguous(ServiceError):
     """More than one matching resource found where one was expected."""
+
+
+class BadRequest(ServiceError):
+    """Invalid client request (e.g., payload-path mismatch)."""
