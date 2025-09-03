@@ -1,23 +1,21 @@
-from datetime import datetime as dt
-from typing import Optional, Literal, List
-from datetime import date
-from hashlib import sha1
-from fastapi import APIRouter, HTTPException, Query, Depends
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..schemas import (
+    PaginatedTransactions,
     Transaction,
     TransactionCreate,
-    PaginatedTransactions,
     TransactionSummary,
 )
 from ..services.transactions import (
-    get_transaction_by_id,
     create_transaction_db,
-    get_all_transactions_db,
-    count_transactions_db,
-    get_transactions_summary,
+    get_transaction_db,
+    list_transactions_db,
+    summarize_by_category_db,
 )
+from ..services.utils import NotFound, Conflict, BadRequest, Ambiguous
+
 
 router = APIRouter(
     prefix="/transactions",
@@ -26,106 +24,123 @@ router = APIRouter(
 )
 
 
-@router.post("/", response_model=Transaction, status_code=201)
-def create_transaction(transaction: TransactionCreate, db: Session = Depends(get_db)):
+@router.post("/", response_model=Transaction, status_code=status.HTTP_201_CREATED)
+def create_transaction(
+    payload: TransactionCreate,
+    db: Session = Depends(get_db),
+) -> Transaction:
     """
-    Adds a new transaction to the database.
+    Create a transaction.
+
+    - Duplicate policy:
+      * Allowed: duplicates when SAME (fingerprint, batch_hash)
+      * Rejected (409): fingerprint exists with a DIFFERENT batch_hash
+    - Category is resolved from rules for the response.
     """
-    batch_hash = sha1(str(dt.now()).encode()).hexdigest()
-    db_transaction = create_transaction_db(db, transaction, batch_hash)
-    return db_transaction
+    try:
+        return create_transaction_db(db, payload)
+    except NotFound as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Conflict as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
 @router.get("/", response_model=PaginatedTransactions)
 def get_all_transactions(
-    limit: int = Query(50, ge=1, le=200, description="Max transactions to return"),
-    offset: int = Query(0, ge=0, description="Number of transactions to skip"),
-    sort_by: Literal["date_desc", "date_asc"] = Query("date_desc"),
-    text: Optional[str] = Query(None, description="Filter by transaction text"),
-    entity: Optional[str] = Query(None, description="Filter by transaction entity"),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    account: Optional[str] = Query(None, description="Filter by account name"),
-    date_from: Optional[date] = Query(
-        None, description="Filter by minimum date (YYYY-MM-DD)"
-    ),
-    date_to: Optional[date] = Query(
-        None, description="Filter by maximum date (YYYY-MM-DD)"
-    ),
     db: Session = Depends(get_db),
-):
-    """
-    Retrieves all transactions with their assigned category, with optional filtering.
-    """
-    transactions = get_all_transactions_db(
-        db,
-        limit=limit,
-        offset=offset,
-        sort_by=sort_by,
-        text=text,
-        entity=entity,
-        account=account,
-        category=category,
-        date_from=date_from,
-        date_to=date_to,
-    )
-    total = count_transactions_db(
-        db,
-        text=text,
-        entity=entity,
-        account=account,
-        category=category,
-        date_from=date_from,
-        date_to=date_to,
-    )
-    return {
-        "items": transactions,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    }
+    limit: int = Query(50, gt=0, le=500, description="Page size."),
+    offset: int = Query(0, ge=0, description="Zero-based start index."),
+    sort_by: str = Query(
+        "date_desc",
+        description="Sort order.",
+        pattern="^(date_desc|date_asc|amount_desc|amount_asc)$",
+    ),
+    date_from: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
+    date_to: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
+    account: Optional[str] = Query(None, description="Filter by account name."),
+    q: Optional[str] = Query(
+        None, description="Case-insensitive search in entity/text/reference."
+    ),
+) -> PaginatedTransactions:
+    """List transactions with pagination, sorting, and filters."""
+    try:
+        return list_transactions_db(
+            db,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            date_from=date_from,
+            date_to=date_to,
+            account=account,
+            q=q,
+        )
+    except BadRequest as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get(
-    "/summary",
-    response_model=List[TransactionSummary],
-    summary="Aggregate totals per category or per month",
-    description="Returns total sum and count of transactions grouped by category or by month (YYYY-MM).",
-)
-def transactions_summary(
-    group_by_category: bool = Query(True, description="Aggregation dimension"),
-    text: Optional[str] = Query(None, description="Search in text/entity"),
-    account: Optional[str] = Query(None, description="Filter by account name"),
-    date_from: Optional[date] = Query(
-        None, description="Filter by minimum date (YYYY-MM-DD)"
-    ),
-    date_to: Optional[date] = Query(
-        None, description="Filter by maximum date (YYYY-MM-DD)"
-    ),
+@router.get("/summary", response_model=List[TransactionSummary])
+def summarize_transactions_by_category(
     db: Session = Depends(get_db),
-):
+    scope_name: Optional[str] = Query(
+        None,
+        description=(
+            "Parent category name whose subtree is the scope. " "Omit for global roots."
+        ),
+    ),
+    depth: int = Query(
+        1,
+        ge=1,
+        description=(
+            "Depth within the scope to define the groups. "
+            "1 = direct children; 2 = grandchildren; etc."
+        ),
+    ),
+    date_from: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
+    date_to: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
+    account: Optional[str] = Query(None, description="Filter by account name."),
+    q: Optional[str] = Query(
+        None, description="Case-insensitive search in entity/text/reference."
+    ),
+) -> List[TransactionSummary]:
     """
-    Response shape:
-    [
-        {"key": "Groceries", "amount_sum": "123.45", "count": 7},
-        {"key": "Rent", "amount_sum": "900.00", "count": 1}
-    ]
+    Summarize transactions **by category nodes** at a given depth within an optional scope.
+
+    Examples:
+    - `scope_name=None, depth=1` ⇒ group by root categories.
+    - `scope_name=\"Expenses\", depth=1` ⇒ group by direct children of “Expenses”.
+    - `scope_name=\"Expenses\", depth=2` ⇒ group by grandchildren of “Expenses”.
+
+    Notes:
+    - If a resolved transaction category is shallower than the requested depth within the scope,
+      it is grouped under its deepest available ancestor (not dropped).
+    - You can filter via `account`, `date_from`, `date_to`, and `q`. There is **no** separate “group by account”.
     """
-    return get_transactions_summary(
-        db,
-        group_by_category=group_by_category,
-        text=text,
-        account=account,
-        date_from=date_from,
-        date_to=date_to,
-    )
+    try:
+        return summarize_by_category_db(
+            db,
+            scope_name=scope_name,
+            depth=depth,
+            date_from=date_from,
+            date_to=date_to,
+            account=account,
+            q=q,
+        )
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Ambiguous as e:
+        # Scope category name exists under multiple parents
+        raise HTTPException(status_code=409, detail=str(e))
+    except BadRequest as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/{transaction_id}", response_model=Transaction)
-def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
-    """
-    Retrieves a single transaction by its ID.
-    """
-    transaction_data = get_transaction_by_id(db, transaction_id)
-    if transaction_data:
-        return Transaction(**dict(transaction_data))
-    raise HTTPException(status_code=404, detail="Transaction not found")
+@router.get("/{tx_id}", response_model=Transaction)
+def get_transaction(
+    tx_id: int,
+    db: Session = Depends(get_db),
+) -> Transaction:
+    """Retrieve a single transaction."""
+    try:
+        return get_transaction_db(db, tx_id)
+    except NotFound as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

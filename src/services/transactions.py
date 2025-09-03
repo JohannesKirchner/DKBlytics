@@ -1,291 +1,346 @@
-from typing import List, Optional, Tuple
-from datetime import date
+from typing import List, Optional, Tuple, Dict
 from decimal import Decimal
-from sqlalchemy import select, or_, func
-from sqlalchemy.orm import Session
+from sqlalchemy import select, or_, and_, func
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.sql import Select
 from ..models import (
     Transaction as TransactionORM,
     Account as AccountORM,
     Category as CategoryORM,
-    CategoryRule as CategoryRuleORM,
 )
 from ..schemas import (
     Transaction,
     TransactionCreate,
     TransactionSummary,
+    PaginatedTransactions,
 )
 from ..utils import make_fingerprint
+from .category_rules import resolve_category_for_db, _resolve_category_for_db_orm
+from .categories import _find_unique_category_by_name
+from .utils import Conflict, NotFound, BadRequest
+from collections import defaultdict
 
 
-def _to_tx_schema(
-    row: Tuple[TransactionORM, Optional[str], Optional[int]],
+# ---- Helpers ----------------------------------------------------------------
+
+
+# def _quantize_amount(value: Decimal) -> str:
+#    """Return a canonical string for Decimal with 2 dp, rounding half up."""
+#    return str(value.quantize(Decimal("0.01"), rounding="ROUND_HALF_UP"))
+
+
+def _tx_to_schema(
+    row: TransactionORM,
+    *,
+    account_name: str,
+    category_name: Optional[str],
 ) -> Transaction:
-    if len(row) == 3:
-        tx, account_name, _ = (
-            row  # third part may be category_id (not exposed directly here)
-        )
+    return Transaction(
+        id=row.id,
+        text=getattr(row, "text", None),
+        entity=row.entity or "",
+        account=account_name,
+        amount=row.amount,
+        date=row.date,
+        reference=getattr(row, "reference", None),
+        batch_hash=getattr(row, "batch_hash", None),
+        fingerprint=row.fingerprint,
+        category=category_name,
+    )
+
+
+def _build_category_indexes(db: Session) -> Tuple[Dict[int, int], Dict[int, str]]:
+    """Return (parent_by_id, name_by_id)."""
+    rows = db.scalars(select(CategoryORM)).all()
+    parent_by_id = {r.id: r.parent_id for r in rows}
+    name_by_id = {r.id: r.name for r in rows}
+    return parent_by_id, name_by_id
+
+
+def _ancestor_at_scope_depth(
+    node_id: int,
+    parent_by_id: Dict[int, Optional[int]],
+    scope_id: Optional[int],
+    depth: int,
+) -> Optional[int]:
+    """
+    Return the ancestor category id at 'depth' below 'scope_id'.
+
+    - scope_id=None means a virtual root whose children are the DB root categories.
+    - depth=1 means direct children of the scope.
+    - If the node is not within the scope subtree, returns None.
+    - If the node doesn't reach the requested depth, returns the deepest available ancestor
+      within the scope chain (so shallow categories still get counted).
+    """
+    # Build full chain from node up to real root: [node, parent, ..., None]
+    chain: List[int] = []
+    cur = node_id
+    while cur is not None:
+        chain.append(cur)
+        cur = parent_by_id.get(cur)
+
+    # Reverse to get path from real root -> node
+    path_root_to_node = list(reversed(chain))  # [root, ..., node]
+
+    if scope_id is None:
+        # virtual root: scope lies before first real root
+        scope_index = -1  # virtual
     else:
-        tx, account_name = (
-            row  # third part may be category_id (not exposed directly here)
-        )
-    return Transaction(
-        id=tx.id,
-        text=tx.text,
-        entity=tx.entity,
-        account=account_name,  # preserve API shape as account name
-        amount=tx.amount,
-        date=tx.date,
-        reference=tx.reference,
-        fingerprint=tx.fingerprint,
-    )
+        try:
+            scope_index = path_root_to_node.index(scope_id)
+        except ValueError:
+            return None  # node not in scope subtree
+
+    target_index = scope_index + depth  # index in path_root_to_node
+    # If too deep, clamp to last existing
+    if target_index >= len(path_root_to_node):
+        target_index = len(path_root_to_node) - 1
+    if target_index < 0:
+        return None
+
+    return path_root_to_node[target_index]
 
 
-def create_transaction_db(db: Session, tx: TransactionCreate, batch_hash) -> bool:
-    # ensure account exists (by name)
-    acct = db.execute(
-        select(AccountORM).where(AccountORM.name == tx.account)
-    ).scalar_one_or_none()
-    if acct is None:
-        db.rollback()
-        raise ValueError(f"An account with name {tx.account} does not exist")
+def _get_transaction_select(
+    db: Session,
+    *,
+    sort_by: str = "date_desc",
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    account: Optional[str] = None,
+    q: Optional[str] = None,  # substring search across entity/text/reference
+) -> Select:
+    if sort_by not in SortBy:
+        raise BadRequest(f"Unsupported sort_by '{sort_by}'.")
 
+    tx = TransactionORM
+    q_stmt = select(tx).options(joinedload(tx.account))
+
+    conds = []
+    if date_from:
+        conds.append(tx.date >= date_from)
+    if date_to:
+        conds.append(tx.date <= date_to)
+    if account:
+        acc = db.scalar(select(AccountORM).where(AccountORM.name == account))
+        if acc is None:
+            raise NotFound(f"Couldn't find account with name {account}")
+        conds.append(tx.account_id == acc.id)
+    if q:
+        pattern = f"%{q.lower()}%"
+        entity_ci = func.lower(tx.entity).like(pattern)
+        clauses = [entity_ci]
+        clauses.append(func.lower(tx.text).like(pattern))
+        clauses.append(func.lower(tx.reference).like(pattern))
+        conds.append(or_(*clauses))
+
+    if conds:
+        q_stmt = q_stmt.where(and_(*conds))
+
+    if sort_by == "date_desc":
+        q_stmt = q_stmt.order_by(tx.date.desc(), tx.id.desc())
+    elif sort_by == "date_asc":
+        q_stmt = q_stmt.order_by(tx.date.asc(), tx.id.asc())
+    elif sort_by == "amount_desc":
+        q_stmt = q_stmt.order_by(tx.amount.desc(), tx.id.desc())
+    elif sort_by == "amount_asc":
+        q_stmt = q_stmt.order_by(tx.amount.asc(), tx.id.asc())
+
+    return q_stmt
+
+
+# ---- Create -----------------------------------------------------------------
+
+
+def create_transaction_db(db: Session, payload: TransactionCreate) -> Transaction:
+    # 1) Resolve account
+    account = db.scalar(select(AccountORM).where(AccountORM.name == payload.account))
+    if account is None:
+        raise NotFound(f"Account '{payload.account}' was not found.")
+
+    # 2) Compute fingerprint
     fingerprint = make_fingerprint(
-        tx.text, tx.entity, tx.account, tx.amount, tx.date, tx.reference
+        text=payload.text,
+        entity=payload.entity,
+        account=account.name,
+        amount=payload.amount,
+        date=payload.date,
+        reference=payload.reference,
     )
 
-    exists = db.execute(
-        select(TransactionORM.id).where(
-            TransactionORM.fingerprint == fingerprint,
-            TransactionORM.batch_hash != batch_hash,
-        )
-    ).first()
-    if exists:
-        # db.rollback()  # in case we created an account in this transaction intentionally keep it
-        # raise ValueError(f"The transaction is {tx} is likely a duplicate")
-        return False
+    # 3) Enforce your batch-aware de-dup rule in app logic:
+    #    allow duplicates only when (fingerprint, batch_hash) match exactly.
+    existing = db.scalars(
+        select(TransactionORM).where(TransactionORM.fingerprint == fingerprint)
+    ).all()
+    for e in existing:
+        if getattr(e, "batch_hash", None) != payload.batch_hash:
+            raise Conflict(
+                "Duplicate transaction: fingerprint already exists with a different batch_hash."
+            )
+    # Otherwise: either none exist, or all have the same batch_hash -> allowed.
 
+    # 4) Insert
     obj = TransactionORM(
-        text=tx.text,
-        entity=tx.entity,
-        account_id=acct.id,
-        amount=tx.amount,
-        date=tx.date,
-        reference=tx.reference,
+        text=payload.text,
+        entity=payload.entity,
+        account_id=account.id,
+        date=payload.date,
+        amount=payload.amount,
+        reference=payload.reference,
+        batch_hash=payload.batch_hash,
         fingerprint=fingerprint,
-        batch_hash=batch_hash,
-    )
-    db.add(obj)
-    db.flush()
-
-    return Transaction(
-        id=obj.id,
-        text=obj.text,
-        entity=obj.entity,
-        account=acct.name,
-        amount=obj.amount,
-        date=obj.date,
-        reference=obj.reference,
-        fingerprint=obj.fingerprint,
     )
 
+    try:
+        db.add(obj)
+        db.flush()  # assigns obj.id
+    except IntegrityError as ie:
+        # We no longer rely on a unique constraint for fingerprint,
+        # but keep this as a safeguard for other constraints.
+        db.rollback()
+        raise Conflict(
+            "Could not create transaction due to a constraint violation."
+        ) from ie
 
-def get_transaction_by_id(db: Session, tx_id: int) -> Optional[Transaction]:
-    stmt = (
-        select(TransactionORM, AccountORM.name)
-        .join(AccountORM, TransactionORM.account_id == AccountORM.id)
+    # 5) Resolve category
+    cat_name = resolve_category_for_db(db, entity=payload.entity, text=payload.text)
+
+    return _tx_to_schema(obj, account_name=account.name, category_name=cat_name)
+
+
+# ---- Read one ---------------------------------------------------------------
+
+
+def get_transaction_db(db: Session, tx_id: int) -> Transaction:
+    row = db.scalar(
+        select(TransactionORM)
+        .options(joinedload(TransactionORM.account))
         .where(TransactionORM.id == tx_id)
     )
-    row = db.execute(stmt).first()
-    if not row:
-        return None
-    return _to_tx_schema(row)
+    if row is None:
+        raise NotFound(f"Transaction {tx_id} was not found.")
+
+    account_name = row.account.name if row.account else "<unknown>"
+    cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "")
+
+    return _tx_to_schema(row, account_name=account_name, category_name=cat_name)
 
 
-def _filters_stmt(
-    *,
-    text: Optional[str],
-    entity: Optional[str],
-    category: Optional[str],
-    account: Optional[str],
-    date_from: Optional[date],
-    date_to: Optional[date],
-    q: Optional[str],
-):
-    # Build a SQLAlchemy expression for filters to reuse in count/list queries
-    filters = []
-    if text:
-        filters.append(TransactionORM.text == text)
-    if entity:
-        filters.append(TransactionORM.entity == entity)
-    if account:
-        filters.append(AccountORM.name == account)
-    if date_from:
-        filters.append(TransactionORM.date >= date_from)
-    if date_to:
-        filters.append(TransactionORM.date < date_to)
-    if q:
-        like = f"%{q}%"
-        filters.append(
-            or_(TransactionORM.text.ilike(like), TransactionORM.entity.ilike(like))
-        )
-    # category via category_rules
-    if category:
-        filters.append(
-            select(CategoryORM.id)
-            .join(CategoryRuleORM, CategoryRuleORM.category_id == CategoryORM.id)
-            .where(
-                CategoryORM.name == category,
-                CategoryRuleORM.text == TransactionORM.text,
-                CategoryRuleORM.entity == TransactionORM.entity,
-            )
-            .exists()
-        )
-    return filters
+# ---- List with filters/pagination -------------------------------------------
+
+SortBy = ("date_desc", "date_asc", "amount_desc", "amount_asc")
 
 
-def count_transactions_db(
+def list_transactions_db(
     db: Session,
     *,
-    text: Optional[str] = None,
-    entity: Optional[str] = None,
-    category: Optional[str] = None,
-    account: Optional[str] = None,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
-    q: Optional[str] = None,
-) -> int:
-    filters = _filters_stmt(
-        text=text,
-        entity=entity,
-        category=category,
-        account=account,
-        date_from=date_from,
-        date_to=date_to,
-        q=q,
-    )
-    stmt = select(func.count(TransactionORM.id)).join(
-        AccountORM, TransactionORM.account_id == AccountORM.id
-    )
-    for f in filters:
-        stmt = stmt.where(f)
-    return db.execute(stmt).scalar_one()
-
-
-def get_all_transactions_db(
-    db: Session,
-    *,
-    limit: int,
-    offset: int,
+    limit: int = 50,
+    offset: int = 0,
     sort_by: str = "date_desc",
-    text: Optional[str] = None,
-    entity: Optional[str] = None,
-    category: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     account: Optional[str] = None,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
-    q: Optional[str] = None,
-) -> List[Transaction]:
-    filters = _filters_stmt(
-        text=text,
-        entity=entity,
-        category=category,
-        account=account,
-        date_from=date_from,
-        date_to=date_to,
-        q=q,
+    q: Optional[str] = None,  # substring search across entity/text/reference
+) -> PaginatedTransactions:
+    if sort_by not in SortBy:
+        raise BadRequest(f"Unsupported sort_by '{sort_by}'.")
+
+    q_stmt = _get_transaction_select(
+        db, sort_by=sort_by, date_from=date_from, date_to=date_to, account=account, q=q
     )
 
-    stmt = (
-        select(TransactionORM, AccountORM.name, CategoryRuleORM.category_id)
-        .join(AccountORM, TransactionORM.account_id == AccountORM.id)
-        .outerjoin(
-            CategoryRuleORM,
-            (CategoryRuleORM.text == TransactionORM.text)
-            & (CategoryRuleORM.entity == TransactionORM.entity),
+    total = db.scalar(select(func.count()).select_from(q_stmt.subquery())) or 0
+    q_stmt = q_stmt.limit(limit).offset(offset)
+    rows: List[TransactionORM] = db.scalars(q_stmt).all()
+
+    items: List[Transaction] = []
+    for r in rows:
+        account_name = r.account.name if r.account else "<unknown>"
+        cat_name = resolve_category_for_db(db, entity=r.entity, text=r.text)
+        items.append(
+            _tx_to_schema(
+                r,
+                account_name=account_name,
+                category_name=cat_name,
+            )
         )
-    )
-    for f in filters:
-        stmt = stmt.where(f)
 
-    if sort_by in ("date_desc", "date"):
-        stmt = stmt.order_by(TransactionORM.date.desc())
-    elif sort_by == "date_asc":
-        stmt = stmt.order_by(TransactionORM.date.asc())
-    elif sort_by == "amount_desc":
-        stmt = stmt.order_by(TransactionORM.amount.desc())
-    elif sort_by == "amount_asc":
-        stmt = stmt.order_by(TransactionORM.amount.asc())
-    else:
-        stmt = stmt.order_by(TransactionORM.date.desc())
-
-    stmt = stmt.limit(limit).offset(offset)
-
-    rows = db.execute(stmt).all()
-    return [_to_tx_schema(r) for r in rows]
+    return PaginatedTransactions(items=items, total=total, limit=limit, offset=offset)
 
 
-def get_transactions_summary(
+# ---- Summary by category at scope/depth -------------------------------------
+
+
+def summarize_by_category_db(
     db: Session,
     *,
-    by: str = "category",  # category | account | entity | month
+    scope_name: Optional[str] = None,
+    depth: int = 1,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     account: Optional[str] = None,
     q: Optional[str] = None,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
-) -> TransactionSummary:
-    filters = _filters_stmt(
-        text=None,
-        entity=None,
-        category=None,
-        account=account,
-        date_from=date_from,
-        date_to=date_to,
-        q=q,
+) -> List[TransactionSummary]:
+    """
+    Summarize by category nodes at a given depth within a scope subtree.
+
+    - scope_name=None, depth=1  -> root categories
+    - scope_name="Expenses", 1  -> direct children of Expenses
+    - scope_name="Expenses", 2  -> grandchildren of Expenses
+    - If a resolved transaction category is shallower than the requested depth within the scope,
+      it is grouped under its deepest available ancestor (so shallow nodes are not dropped).
+    - You can filter by account/date/q; there is no separate "group by account".
+    """
+
+    # Determine scope_id
+    scope_id: Optional[int] = None
+    if scope_name:
+        scope_id = _find_unique_category_by_name(db, scope_name).id
+
+    # Fetch candidate transactions
+    q_stmt = _get_transaction_select(
+        db, date_from=date_from, date_to=date_to, account=account, q=q
     )
+    rows: List[TransactionORM] = db.scalars(q_stmt).all()
 
-    if by == "account":
-        key_expr = AccountORM.name
-        join_rules = False
-    elif by == "entity":
-        key_expr = TransactionORM.entity
-        join_rules = False
-    elif by == "month":
-        # YYYY-MM
-        key_expr = func.strftime("%Y-%m", TransactionORM.date)
-        join_rules = False
-    else:  # "category"
-        key_expr = func.coalesce(CategoryORM.name, "Uncategorized")
-        join_rules = True
+    # Build category indexes
+    parent_by_id, name_by_id = _build_category_indexes(db)
 
-    stmt = (
-        select(
-            key_expr.label("grp"),
-            func.count().label("cnt"),
-            func.sum(TransactionORM.amount).label("total"),
+    # Aggregate
+    sums: Dict[Optional[str], Decimal] = defaultdict(lambda: Decimal("0"))
+    bucket_items: Dict[Optional[str], List[Transaction]] = defaultdict(list)
+    for r in rows:
+        cat_row = _resolve_category_for_db_orm(db, entity=r.entity, text=r.text or "")
+        if not cat_row:
+            group_name = None  # uncategorized
+            cat_name = None
+        else:
+            group_id = _ancestor_at_scope_depth(
+                cat_row.id, parent_by_id, scope_id, depth
+            )
+            if group_id is None:
+                # outside scope; skip
+                continue
+            group_name = name_by_id[group_id]
+            cat_name = cat_row.name
+
+        # Convert row to API schema with resolved category
+        acc_name = r.account.name if r.account else "<unknown>"
+        tx_schema = _tx_to_schema(r, account_name=acc_name, category_name=cat_name)
+
+        # Aggregate
+        sums[group_name] += r.amount
+        bucket_items[group_name].append(tx_schema)
+
+    # Format output
+    results: List[TransactionSummary] = []
+    for name, txs in bucket_items.items():
+        results.append(
+            TransactionSummary(key=name, amount_sum=sums[name], transactions=txs)
         )
-        .select_from(TransactionORM)
-        .join(AccountORM, TransactionORM.account_id == AccountORM.id)
-    )
 
-    if join_rules:
-        stmt = stmt.outerjoin(
-            CategoryRuleORM,
-            (CategoryRuleORM.text == TransactionORM.text)
-            & (CategoryRuleORM.entity == TransactionORM.entity),
-        ).outerjoin(CategoryORM, CategoryORM.id == CategoryRuleORM.category_id)
-
-    for f in filters:
-        stmt = stmt.where(f)
-
-    stmt = stmt.group_by("grp").order_by(func.sum(TransactionORM.amount).desc())
-
-    items = [
-        TransactionSummary(
-            group=row.grp, count=row.cnt, total=row.total or Decimal("0.00")
-        )
-        for row in db.execute(stmt)
-    ]
-    return TransactionSummary(
-        by=by if by in {"category", "account", "entity", "month"} else "category",
-        items=items,
-    )
+    # Sort by absolute amount desc, then number of transactions
+    results.sort(key=lambda x: (abs(x.amount_sum), len(x.transactions)), reverse=True)
+    return results

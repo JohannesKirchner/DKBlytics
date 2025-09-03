@@ -67,10 +67,10 @@ def delete_category_rule_db(db: Session, rule_id: int) -> None:
     # flush/commit handled by dependency
 
 
-def resolve_category_for_db(
+def _resolve_category_for_db_orm(
     db: Session, *, entity: str, text: Optional[str]
-) -> Optional[str]:
-    """Return the matching category name for (entity, text) or None.
+) -> Optional[CategoryRuleORM]:
+    """Return the matching category ORM model for (entity, text) or None.
 
     Priority:
       1) exact: entity AND text match
@@ -90,7 +90,7 @@ def resolve_category_for_db(
             .limit(1)
         ).first()
         if exact:
-            return exact.category.name
+            return exact.category
 
     # 2) default for entity
     default = db.scalars(
@@ -104,4 +104,17 @@ def resolve_category_for_db(
         )
         .limit(1)
     ).first()
-    return default.category.name if default else None
+    return default.category if default else None
+
+
+def resolve_category_for_db(
+    db: Session, *, entity: str, text: Optional[str]
+) -> Optional[str]:
+    """Return the matching category name for (entity, text) or None.
+
+    Priority:
+      1) exact: entity AND text match
+      2) default: entity match AND text IS NULL
+    """
+    category = _resolve_category_for_db_orm(db=db, entity=entity, text=text)
+    return category.name if category else None

@@ -143,6 +143,11 @@ class TransactionCreate(AppBaseModel):
     reference: Optional[str] = Field(
         None, max_length=1000, description="Optional customer reference."
     )
+    batch_hash: Optional[str] = Field(
+        None,
+        max_length=40,
+        description="Optional import batch hash; duplicates are allowed only within the same batch_hash.",
+    )
 
 
 class Transaction(AppBaseModel):
@@ -161,18 +166,20 @@ class Transaction(AppBaseModel):
     reference: Optional[str] = Field(
         None, max_length=1000, description="Optional customer reference."
     )
+    batch_hash: Optional[str] = Field(
+        None,
+        max_length=40,
+        description="Optional import batch hash; duplicates are allowed only within the same batch_hash.",
+    )
     fingerprint: Optional[str] = Field(
         None,
-        max_length=64,
+        max_length=40,
         pattern=r"^[0-9a-f]{40}$",
         description="40-character hex fingerprint used for de-duplication.",
     )
-
-
-class TransactionWithCategory(Transaction):
-    """Transaction including its resolved category (if any)."""
-
-    category: Optional[str] = Field(None, description="Resolved category name, if any.")
+    category: Optional[str] = Field(
+        None, description="Resolved category name (exact match > entity default)."
+    )
 
 
 class PaginatedTransactions(AppBaseModel):
@@ -181,7 +188,7 @@ class PaginatedTransactions(AppBaseModel):
     total: int = Field(..., ge=0, description="Total number of matching transactions.")
     limit: int = Field(..., gt=0, description="Page size (maximum number of items).")
     offset: int = Field(..., ge=0, description="Zero-based index of the first item.")
-    items: List[TransactionWithCategory] = Field(
+    items: List[Transaction] = Field(
         ..., description="Transactions within the current page."
     )
 
@@ -197,4 +204,7 @@ class TransactionSummary(AppBaseModel):
         ...,
         description="Sum of amounts in this group (negative = net outflow, positive = net inflow).",
     )
-    count: int = Field(..., ge=0, description="Number of transactions in this group.")
+    transactions: List["Transaction"] = Field(
+        default_factory=list,
+        description="All transactions that contributed to this group's amount.",
+    )

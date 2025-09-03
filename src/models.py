@@ -111,9 +111,3 @@ class Transaction(Base):
     # De-duplication
     fingerprint: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     batch_hash: Mapped[Optional[str]] = mapped_column(String(40), index=True)
-
-    __table_args__ = (
-        # Enforce: the same fingerprint must not appear in a different batch.
-        # Using a global UNIQUE on fingerprint ensures cross-batch duplicates are blocked.
-        UniqueConstraint("fingerprint", name="uq_transactions_fingerprint"),
-    )

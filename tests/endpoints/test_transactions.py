@@ -37,3 +37,26 @@ def test_get_transaction_by_id(client, payload, id):
     assert response.status_code == 200, response.text
     assert response_data["text"] == payload["text"]
     assert response_data["entity"] == payload["entity"]
+
+
+@pytest.mark.order(13)
+@pytest.mark.parametrize(
+    "query, expected_length",
+    [
+        pytest.param("depth=1", 2, id="Roots"),
+        pytest.param("depth=2", 5, id="RootsChildren"),
+        pytest.param(
+            "depth=2&date_from=2025-01-01&date_to=2025-02-01",
+            3,
+            id="RootsChildrenJanuary2025",
+        ),
+        pytest.param("scope_name=Expense&depth=1", 4, id="Expense"),
+        pytest.param("scope_name=Expense&depth=2", 5, id="ExpenseChildren"),
+    ],
+)
+def test_get_transaction_summary(client, query, expected_length):
+    response = client.get(f"/transactions/summary?{query}")
+    response_data = response.json()
+
+    assert response.status_code == 200, response.text
+    assert len(response_data) == expected_length
