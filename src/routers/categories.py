@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..schemas import Category, CategoryCreate
@@ -18,7 +18,7 @@ router = APIRouter(
 )
 
 
-@router.post("/", status_code=201, response_model=Category)
+@router.post("/", status_code=status.HTTP_201_CREATED, response_model=Category)
 def create_category(
     category: CategoryCreate,
     db: Session = Depends(get_db),
@@ -27,11 +27,11 @@ def create_category(
     try:
         return create_category_db(db, category)
     except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Ambiguous as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except Conflict as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
 @router.get("/", response_model=List[Category])
@@ -56,9 +56,9 @@ def get_category_tree(
     try:
         return build_category_tree_db(db, parent_name=name)
     except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Ambiguous as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
 @router.get("/{name}", response_model=Category)
@@ -71,6 +71,6 @@ def get_category_by_name(name: str, db: Session = Depends(get_db)):
     try:
         return get_category_by_name_db(db, name)
     except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Ambiguous as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))

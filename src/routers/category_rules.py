@@ -1,17 +1,19 @@
 from typing import List, Optional
-from fastapi import APIRouter, Query, Depends, status
+from fastapi import APIRouter, Query, Depends, status, HTTPException
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..schemas import CategoryRule, CategoryRuleCreate
+from ..services.utils import NotFound, Ambiguous, Conflict
 from ..services.category_rules import (
     create_category_rule_db,
-    get_category_rule_by_id_db,
     get_all_category_rules_db,
+    delete_category_rule_db,
+    resolve_category_for_db,
 )
 
 router = APIRouter(
-    prefix="/category-rules",
-    tags=["CategoryRules"],
+    prefix="/rules",
+    tags=["Category Rules"],
     responses={404: {"description": "Not found"}},
 )
 
@@ -22,32 +24,53 @@ def create_category_rule(
     db: Session = Depends(get_db),
 ):
     """
-    Creates a Category Rule
+    Create a category rule.
+
+    Matching priority:
+      1) exact match on (entity AND text)
+      2) default match on (entity AND text IS NULL)
     """
-    category_rule = create_category_rule_db(db, payload)
-    return category_rule
+    try:
+        return create_category_rule_db(db, payload)
+    except NotFound as e:
+        # category_name not found
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Ambiguous as e:
+        # category_name ambiguous across parents
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except Conflict as e:
+        # duplicate (entity, text) or duplicate default for entity
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
 @router.get("/", response_model=List[CategoryRule])
-def get_all_category_rules(
-    text: Optional[str] = Query(None, description="Filter by transaction text"),
-    entity: Optional[str] = Query(None, description="Filter by transaction entity"),
+def get_all_category_rules(db: Session = Depends(get_db)):
+    """List all category rules."""
+    return get_all_category_rules_db(db)
+
+
+@router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category_rule(rule_id: int, db: Session = Depends(get_db)):
+    """Delete a category rule by id."""
+    try:
+        delete_category_rule_db(db, rule_id)
+        return
+    except NotFound as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.get("/resolve", response_model=Optional[str])
+def resolve_rule(
+    entity: str = Query(..., description="Transaction entity"),
+    text: Optional[str] = Query(None, description="Transaction text/description"),
     db: Session = Depends(get_db),
 ):
     """
-    Retrieves all existing categories.
-    """
-    categories = get_all_category_rules_db(db, text=text, entity=entity)
-    return [CategoryRule(**dict(row)) for row in categories]
+    Resolve a category name for a given (entity, text).
 
-
-@router.get("/{category_id}/", response_model=CategoryRule)
-def get_category_rule_by_id(
-    category_id: int,
-    db: Session = Depends(get_db),
-):
+    Resolution order:
+      1) exact (entity AND text)
+      2) default (entity AND text IS NULL)
+    Returns the category name or null if no match.
     """
-    Get category by ID
-    """
-    category_rule = get_category_rule_by_id_db(db, category_id)
-    return category_rule
+    return resolve_category_for_db(db, entity=entity, text=text)

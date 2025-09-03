@@ -28,13 +28,8 @@ def _find_unique_category_by_name(db: Session, name: str) -> CategoryORM:
 
 
 def _optional_unique_parent(
-    db: Session, parent_name: Optional[str]
+    parent_name: str, parents: Optional[List[CategoryORM]]
 ) -> Optional[CategoryORM]:
-    if not parent_name:
-        return None
-    parents = db.scalars(
-        select(CategoryORM).where(CategoryORM.name == parent_name)
-    ).all()
     if not parents:
         raise NotFound(f"Parent category with name '{parent_name}' does not exist.")
     if len(parents) > 1:
@@ -45,7 +40,13 @@ def _optional_unique_parent(
 
 
 def create_category_db(db: Session, category: CategoryCreate) -> Category:
-    parent_obj = _optional_unique_parent(db, category.parent_name)
+    if not category.parent_name:
+        parent_obj = None
+    else:
+        parents = db.scalars(
+            select(CategoryORM).where(CategoryORM.name == category.parent_name)
+        ).all()
+        parent_obj = _optional_unique_parent(category.parent_name, parents)
 
     obj = CategoryORM(
         name=category.name,
@@ -117,30 +118,14 @@ def build_category_tree_db(
         if r.parent_id and r.parent_id in by_id:
             by_id[r.parent_id]["children"].append(by_id[r.id])
 
-    # Sorting helper
-    # def sort_subtree(node: Dict) -> None:
-    #    node["children"].sort(key=lambda x: x["name"].lower())
-    #    for ch in node["children"]:
-    #        sort_subtree(ch)
-
     # Determine roots according to parent_name
     if parent_name:
         # Because names are only unique within a parent, name-only lookups can be ambiguous.
         matches = [r for r in rows if r.name == parent_name]
-        if not matches:
-            raise NotFound(f"Category with name '{parent_name}' was not found.")
-        if len(matches) > 1:
-            raise Ambiguous(
-                f"Category name '{parent_name}' is ambiguous (exists under multiple parents)."
-            )
-        parent = matches[0]
+        parent = _optional_unique_parent(parent_name, matches)
         roots = [by_id[r.id] for r in rows if r.parent_id == parent.id]
     else:
         # normal behavior: all roots (no parent)
         roots = [by_id[r.id] for r in rows if r.parent_id is None]
-
-    # for root in roots:
-    #    sort_subtree(root)
-    # roots.sort(key=lambda x: x["name"].lower())
 
     return roots
