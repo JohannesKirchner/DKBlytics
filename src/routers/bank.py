@@ -1,24 +1,33 @@
-from fastapi import APIRouter, Depends
+from __future__ import annotations
 
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from ..database import get_db
-from ..services.bank import get_new_transactions
 
+from ..database import get_db
+from ..services.bank import get_new_transactions, ExternalServiceError
 
 router = APIRouter(
+    prefix="/bank",
     tags=["Bank Integration"],
     responses={404: {"description": "Not found"}},
 )
 
 
-@router.post("/update_from_bank/")
+@router.post("/update_from_bank", status_code=status.HTTP_200_OK)
 def update_from_bank(db: Session = Depends(get_db)):
     """
-    Connects to a bank API, fetches new transactions, adds them to the database,
-    and creates placeholder categories for new (text, entity) pairs.
+    Connect to the bank API, fetch new transactions, insert them,
+    and update account balances.
+
+    Returns a mapping of account name -> number of inserted transactions for this run.
     """
-    new_transactions = get_new_transactions(db)
+    try:
+        new_transactions = get_new_transactions(db)
+    except ExternalServiceError as e:
+        # Upstream banking API is failing/unavailable
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
     return {
-        "message": f"Successfully updated transactions: {dict(new_transactions)}. New category rules may have been added."
+        "message": "Bank update completed.",
+        "inserted": new_transactions,
     }

@@ -24,7 +24,9 @@ class Account(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True, nullable=False
+        String(255),
+        index=True,
+        nullable=False,  # unique=True,
     )
     balance: Mapped[Decimal] = mapped_column(
         Numeric(18, 2), default=Decimal("0"), nullable=False
