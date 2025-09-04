@@ -12,14 +12,14 @@ with open(Path(__file__).parent / "../mock_data/category_rules.json") as f:
     "payload", [pytest.param(c, id=c["entity"]) for c in CATEGORY_RULES]
 )
 def test_create_category_rule(client, payload):
-    response = client.post("/rules/", json=payload)
+    response = client.post("/api/rules/", json=payload)
 
     assert response.status_code == 201, response.text
 
 
 @pytest.mark.order(31)
 def test_get_category_rules(client):
-    response = client.get("/rules/")
+    response = client.get("/api/rules/")
     response_data = response.json()
 
     assert response.status_code == 200
@@ -32,7 +32,7 @@ def test_get_category_rules(client):
 )
 def test_resolve_category_rule(client, payload):
     response = client.get(
-        f"/rules/resolve?entity={payload["entity"]}&text={payload["text"]}"
+        f"/api/rules/resolve?entity={payload["entity"]}&text={payload["text"]}"
     )
     response_data = response.json()
 

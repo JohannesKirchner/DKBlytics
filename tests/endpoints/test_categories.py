@@ -10,14 +10,14 @@ with open(Path(__file__).parent / "../mock_data/categories.json") as f:
 @pytest.mark.order(20)
 @pytest.mark.parametrize("payload", [pytest.param(c, id=c["name"]) for c in CATEGORIES])
 def test_create_category(client, payload):
-    response = client.post("/categories/", json=payload)
+    response = client.post("/api/categories/", json=payload)
 
     assert response.status_code == 201, response.text
 
 
 @pytest.mark.order(21)
 def test_get_categories(client):
-    response = client.get("/categories/")
+    response = client.get("/api/categories/")
     response_data = response.json()
 
     assert response.status_code == 200
@@ -30,7 +30,7 @@ def test_get_categories(client):
     [pytest.param(c, id=c["name"]) for c in CATEGORIES],
 )
 def test_get_category_by_name(client, payload):
-    response = client.get(f"/categories/{payload["name"]}")
+    response = client.get(f"/api/categories/{payload["name"]}")
     response_data = response.json()
 
     assert response.status_code == 200, response.text
@@ -48,9 +48,9 @@ def test_get_category_by_name(client, payload):
 )
 def test_get_category_tree(client, category_name):
     if category_name is None:
-        response = client.get("/categories/tree")
+        response = client.get("/api/categories/tree")
     else:
-        response = client.get(f"/categories/tree?name={category_name}")
+        response = client.get(f"/api/categories/tree?name={category_name}")
     response_data = response.json()
 
     assert response.status_code == 200, response.text

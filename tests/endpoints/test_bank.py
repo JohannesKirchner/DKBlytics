@@ -18,7 +18,7 @@ def test_update_from_bank(client, monkeypatch):
 
     monkeypatch.setattr(bank_router, "get_new_transactions", fake_get_new_transactions)
 
-    r = client.post("/bank/update_from_bank/")
+    r = client.post("/api/bank/update_from_bank/")
     assert r.status_code == 200, r.text
     data = r.json()
     assert isinstance(data, dict)
