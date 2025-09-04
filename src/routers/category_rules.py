@@ -1,9 +1,11 @@
 from typing import List, Optional
+
 from fastapi import APIRouter, Query, Depends, status, HTTPException
 from sqlalchemy.orm import Session
+
 from ..database import get_db
 from ..schemas import CategoryRule, CategoryRuleCreate
-from ..services.utils import NotFound, Ambiguous, Conflict
+from ..utils import NotFound, Ambiguous, Conflict
 from ..services.category_rules import (
     create_category_rule_db,
     get_all_category_rules_db,

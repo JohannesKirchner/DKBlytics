@@ -1,6 +1,8 @@
 from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+
 from ..database import get_db
 from ..schemas import (
     PaginatedTransactions,
@@ -14,7 +16,7 @@ from ..services.transactions import (
     list_transactions_db,
     summarize_by_category_db,
 )
-from ..services.utils import NotFound, Conflict, BadRequest, Ambiguous
+from ..utils import NotFound, Conflict, BadRequest, Ambiguous
 
 
 router = APIRouter(
@@ -57,7 +59,7 @@ def get_all_transactions(
     ),
     date_from: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
     date_to: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
-    account: Optional[str] = Query(None, description="Filter by account name."),
+    account_id: Optional[str] = Query(None, description="Filter by account public_id."),
     q: Optional[str] = Query(
         None, description="Case-insensitive search in entity/text/reference."
     ),
@@ -71,7 +73,7 @@ def get_all_transactions(
             sort_by=sort_by,
             date_from=date_from,
             date_to=date_to,
-            account=account,
+            account_id=account_id,
             q=q,
         )
     except BadRequest as e:
@@ -97,7 +99,7 @@ def summarize_transactions_by_category(
     ),
     date_from: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
     date_to: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
-    account: Optional[str] = Query(None, description="Filter by account name."),
+    account_id: Optional[str] = Query(None, description="Filter by account public_id."),
     q: Optional[str] = Query(
         None, description="Case-insensitive search in entity/text/reference."
     ),
@@ -122,7 +124,7 @@ def summarize_transactions_by_category(
             depth=depth,
             date_from=date_from,
             date_to=date_to,
-            account=account,
+            account_id=account_id,
             q=q,
         )
     except NotFound as e:

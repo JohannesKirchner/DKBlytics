@@ -2,7 +2,7 @@ import json
 import pytest
 from pathlib import Path
 
-with open(Path(__file__).parent / "../data/transactions.json") as f:
+with open(Path(__file__).parent / "../mock_data/transactions.json") as f:
     TRANSACTIONS = json.load(f)
 
 
@@ -11,6 +11,12 @@ with open(Path(__file__).parent / "../data/transactions.json") as f:
     "payload", [pytest.param(p, id=p["text"]) for p in TRANSACTIONS]
 )
 def test_create_transaction(client, payload):
+    # get public id and replace the account name with it
+    response = client.get(f"/accounts?name={payload['account_name']}")
+    acct_payload = response.json()[0]
+    del payload["account_name"]
+    payload["account_id"] = acct_payload["public_id"]
+
     response = client.post("/transactions/", json=payload)
 
     assert response.status_code == 201, response.text

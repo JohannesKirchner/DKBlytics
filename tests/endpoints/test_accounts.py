@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 
 
-with open(Path(__file__).parent / "../data/accounts.json") as f:
+with open(Path(__file__).parent / "../mock_data/accounts.json") as f:
     ACCOUNTS = json.load(f)
 
 
@@ -26,8 +26,15 @@ def test_get_accounts(client):
 
 @pytest.mark.order(3)
 @pytest.mark.parametrize("payload", [pytest.param(p, id=p["name"]) for p in ACCOUNTS])
-def test_get_account_by_name(client, payload):
-    response = client.get(f"/accounts/{payload['name']}")
+def test_get_account_by_public_id(client, payload):
+    response = client.get(
+        f"accounts?name={payload['name']}&holder={payload['holder_name']}"
+    )
+
+    assert response.status_code == 200, response.text
+
+    payload = response.json()[0]
+    response = client.get(f"/accounts/{payload['public_id']}")
     response_data = response.json()
 
     assert response.status_code == 200, response.text

@@ -27,19 +27,39 @@ class AppBaseModel(BaseModel):
 
 
 class AccountCreate(AppBaseModel):
-    """Payload to create an account."""
+    """Payload to create or update an account (IBAN never leaves the API)."""
 
-    name: str = Field(..., max_length=255, description="Account name (unique).")
-    balance: Decimal = Field(
-        ..., ge=0, description="Initial/current balance for this account."
+    name: str = Field(
+        ..., max_length=255, description="Human-friendly account name (not unique)."
     )
+    holder_name: str = Field(
+        ...,
+        max_length=255,
+        description="Account holder's full name as provided by the bank.",
+    )
+    iban_plain: str = Field(
+        ...,
+        max_length=34,
+        description="Raw IBAN. Used server-side only to compute a keyed digest; never returned.",
+    )
+    balance: Decimal = Field(..., ge=0, description="Current balance for this account.")
 
 
 class Account(AppBaseModel):
-    """Account as returned by the API."""
+    """Account as returned by the API (IBAN is not exposed)."""
 
-    id: int = Field(..., description="Database ID.")
-    name: str = Field(..., max_length=255, description="Account name (unique).")
+    id: int = Field(..., description="Database row ID.")
+    public_id: str = Field(
+        ..., description="Opaque, stable identifier to reference this account in APIs."
+    )
+    name: str = Field(..., max_length=255, description="Human-friendly account name.")
+    holder_name: str = Field(
+        ..., max_length=255, description="Account holder's full name."
+    )
+    iban_last4: Optional[str] = Field(
+        None,
+        description="Last 4 characters of the IBAN for display; may be null if not available.",
+    )
     balance: Decimal = Field(..., ge=0, description="Current balance.")
 
 
@@ -129,24 +149,30 @@ class TransactionCreate(AppBaseModel):
     """Payload to create a transaction."""
 
     text: str = Field(
-        ..., max_length=1000, description="Transaction description text (free-form)."
+        ...,
+        max_length=1000,
+        description="Transaction description text from the statement.",
     )
     entity: str = Field(
-        ..., max_length=500, description="Counterparty/entity (exact string)."
-    )
-    account: str = Field(..., description="Account name this transaction belongs to.")
-    amount: Decimal = Field(
         ...,
-        description="Signed amount (negative = outflow, positive = inflow).",
+        max_length=255,
+        description="Counterparty/entity name as extracted from the statement.",
     )
-    date: dt.date = Field(..., description="Transaction date (YYYY-MM-DD).")
+    account_id: str = Field(
+        ..., description="Account public_id this transaction belongs to."
+    )
+    amount: Decimal = Field(
+        ..., description="Signed amount (negative = outflow, positive = inflow)."
+    )
+    date: dt.date = Field(..., description="Booking date in YYYY-MM-DD format.")
     reference: Optional[str] = Field(
-        None, max_length=1000, description="Optional customer reference."
+        None, max_length=1000, description="Optional customer reference or memo."
     )
     batch_hash: Optional[str] = Field(
         None,
         max_length=40,
-        description="Optional import batch hash; duplicates are allowed only within the same batch_hash.",
+        description="Optional batch identifier. Duplicates are allowed within the same batch; "
+        "cross-batch duplicate fingerprints are rejected.",
     )
 
 
@@ -155,30 +181,31 @@ class Transaction(AppBaseModel):
 
     id: Optional[int] = Field(None, description="Transaction ID.")
     text: str = Field(..., max_length=1000, description="Transaction description text.")
-    entity: str = Field(
-        ..., max_length=500, description="Counterparty/entity (exact string)."
+    entity: str = Field(..., max_length=500, description="Counterparty/entity name.")
+    account_id: str = Field(
+        ..., description="Account public_id this transaction belongs to."
     )
-    account: str = Field(..., description="Account name this transaction belongs to.")
+    account_name: str = Field(
+        ..., max_length=255, description="Human-friendly account name."
+    )
     amount: Decimal = Field(
         ..., description="Signed amount (negative = outflow, positive = inflow)."
     )
-    date: dt.date = Field(..., description="Transaction date (YYYY-MM-DD).")
+    date: dt.date = Field(..., description="Booking date in YYYY-MM-DD format.")
     reference: Optional[str] = Field(
         None, max_length=1000, description="Optional customer reference."
-    )
-    batch_hash: Optional[str] = Field(
-        None,
-        max_length=40,
-        description="Optional import batch hash; duplicates are allowed only within the same batch_hash.",
     )
     fingerprint: Optional[str] = Field(
         None,
         max_length=40,
         pattern=r"^[0-9a-f]{40}$",
-        description="40-character hex fingerprint used for de-duplication.",
+        description="40-char hex fingerprint for de-duplication.",
+    )
+    batch_hash: Optional[str] = Field(
+        None, max_length=40, description="Batch identifier, if provided."
     )
     category: Optional[str] = Field(
-        None, description="Resolved category name (exact match > entity default)."
+        None, description="Resolved category name based on rules, if any."
     )
 
 

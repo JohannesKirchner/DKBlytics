@@ -1,9 +1,11 @@
 from typing import List, Optional
+
 from sqlalchemy import select, and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
+
 from .categories import _find_unique_category_by_name
-from .utils import Conflict, NotFound
+from ..utils import Conflict, NotFound
 from ..models import CategoryRule as CategoryRuleORM
 from ..schemas import (
     CategoryRule,

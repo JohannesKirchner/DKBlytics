@@ -1,0 +1,14 @@
+[
+    {
+        "name": "Girokonto",
+        "holder_name": "John Doe",
+        "iban_plain": "NL29INGB7691116985",
+        "balance": "0.00"
+    },
+    {
+        "name": "Tagesgeld",
+        "holder_name": "John Doe",
+        "iban_plain": "NL29INGB7691116988",
+        "balance": "10000.00"
+    }
+]

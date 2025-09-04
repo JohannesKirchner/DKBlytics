@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
@@ -7,9 +8,9 @@ from typing import List, Optional
 from sqlalchemy import (
     Date,
     ForeignKey,
+    String,
     Integer,
     Numeric,
-    String,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -23,16 +24,26 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(
-        String(255),
-        index=True,
-        nullable=False,  # unique=True,
+
+    # public, opaque identifier for API paths
+    public_id: Mapped[str] = mapped_column(
+        String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4())
     )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    holder_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+
+    # sensitive fields (never exposed)
+    iban_hmac: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )  # hex HMAC-SHA256
+    iban_last4: Mapped[str] = mapped_column(String(4), nullable=True)
+
     balance: Mapped[Decimal] = mapped_column(
         Numeric(18, 2), default=Decimal("0"), nullable=False
     )
 
-    transactions: Mapped[List[Transaction]] = relationship(
+    transactions: Mapped[List["Transaction"]] = relationship(
         back_populates="account", cascade="all,delete-orphan"
     )
 
@@ -98,7 +109,9 @@ class Transaction(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     account_id: Mapped[int] = mapped_column(
-        ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False, index=True
+        ForeignKey("accounts.public_id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     account: Mapped[Account] = relationship("Account", back_populates="transactions")
 

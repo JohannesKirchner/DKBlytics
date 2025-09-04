@@ -1,0 +1,32 @@
+[
+    {
+        "text": null,
+        "entity": "Edeka",
+        "category_name": "Groceries"
+    },
+    {
+        "text": null,
+        "entity": "DB Bahn",
+        "category_name": "Train"
+    },
+    {
+        "text": null,
+        "entity": "Shell",
+        "category_name": "Car"
+    },
+    {
+        "text": "Rent",
+        "entity": "Landlord",
+        "category_name": "Rent"
+    },
+    {
+        "text": "Electricity Bill",
+        "entity": "Landlord",
+        "category_name": "Utilities"
+    },
+    {
+        "text": null,
+        "entity": "Myself",
+        "category_name": "Money Transfer"
+    }
+]

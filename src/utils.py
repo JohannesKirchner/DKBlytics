@@ -33,3 +33,37 @@ def make_fingerprint(
 ) -> str:
     raw = f"{text}|{entity}|{amount}|{account}|{date.isoformat()}|{reference}".encode()
     return sha1(raw).hexdigest()
+
+
+# ----- Bank Service-level errors ---------------------------------------------------
+
+
+class BankServiceError(Exception):
+    """Base class for bank integration errors."""
+
+
+class ExternalServiceError(BankServiceError):
+    """Bank API returned an error or we failed to fetch data."""
+
+
+# ----- Service-level errors ---------------------------------------------------
+
+
+class ServiceError(Exception):
+    """Base class for service errors."""
+
+
+class NotFound(ServiceError):
+    """Requested resource was not found."""
+
+
+class Conflict(ServiceError):
+    """Uniqueness or state conflict."""
+
+
+class Ambiguous(ServiceError):
+    """More than one matching resource found where one was expected."""
+
+
+class BadRequest(ServiceError):
+    """Invalid client request (e.g., payload-path mismatch)."""

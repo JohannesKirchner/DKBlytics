@@ -1,9 +1,12 @@
 from typing import List, Optional, Tuple, Dict
 from decimal import Decimal
+from collections import defaultdict
+
 from sqlalchemy import select, or_, and_, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import Select
+
 from ..models import (
     Transaction as TransactionORM,
     Account as AccountORM,
@@ -15,11 +18,9 @@ from ..schemas import (
     TransactionSummary,
     PaginatedTransactions,
 )
-from ..utils import make_fingerprint
+from ..utils import make_fingerprint, Conflict, NotFound, BadRequest
 from .category_rules import resolve_category_for_db, _resolve_category_for_db_orm
 from .categories import _find_unique_category_by_name
-from .utils import Conflict, NotFound, BadRequest
-from collections import defaultdict
 
 
 # ---- Helpers ----------------------------------------------------------------
@@ -34,13 +35,15 @@ def _tx_to_schema(
     row: TransactionORM,
     *,
     account_name: str,
+    account_id: str,
     category_name: Optional[str],
 ) -> Transaction:
     return Transaction(
         id=row.id,
         text=getattr(row, "text", None),
         entity=row.entity or "",
-        account=account_name,
+        account_name=account_name,
+        account_id=account_id,
         amount=row.amount,
         date=row.date,
         reference=getattr(row, "reference", None),
@@ -108,7 +111,7 @@ def _get_transaction_select(
     sort_by: str = "date_desc",
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    account: Optional[str] = None,
+    account_id: Optional[str] = None,
     q: Optional[str] = None,  # substring search across entity/text/reference
 ) -> Select:
     if sort_by not in SortBy:
@@ -122,10 +125,10 @@ def _get_transaction_select(
         conds.append(tx.date >= date_from)
     if date_to:
         conds.append(tx.date <= date_to)
-    if account:
-        acc = db.scalar(select(AccountORM).where(AccountORM.name == account))
+    if account_id:
+        acc = db.scalar(select(AccountORM).where(AccountORM.public_id == account_id))
         if acc is None:
-            raise NotFound(f"Couldn't find account with name {account}")
+            raise NotFound(f"Couldn't find account with ID {account_id}")
         conds.append(tx.account_id == acc.id)
     if q:
         pattern = f"%{q.lower()}%"
@@ -155,7 +158,9 @@ def _get_transaction_select(
 
 def create_transaction_db(db: Session, payload: TransactionCreate) -> Transaction:
     # 1) Resolve account
-    account = db.scalar(select(AccountORM).where(AccountORM.name == payload.account))
+    account = db.scalar(
+        select(AccountORM).where(AccountORM.public_id == payload.account_id)
+    )
     if account is None:
         raise NotFound(f"Account '{payload.account}' was not found.")
 
@@ -163,7 +168,7 @@ def create_transaction_db(db: Session, payload: TransactionCreate) -> Transactio
     fingerprint = make_fingerprint(
         text=payload.text,
         entity=payload.entity,
-        account=account.name,
+        account=account.public_id,
         amount=payload.amount,
         date=payload.date,
         reference=payload.reference,
@@ -185,7 +190,7 @@ def create_transaction_db(db: Session, payload: TransactionCreate) -> Transactio
     obj = TransactionORM(
         text=payload.text,
         entity=payload.entity,
-        account_id=account.id,
+        account_id=account.public_id,
         date=payload.date,
         amount=payload.amount,
         reference=payload.reference,
@@ -207,7 +212,12 @@ def create_transaction_db(db: Session, payload: TransactionCreate) -> Transactio
     # 5) Resolve category
     cat_name = resolve_category_for_db(db, entity=payload.entity, text=payload.text)
 
-    return _tx_to_schema(obj, account_name=account.name, category_name=cat_name)
+    return _tx_to_schema(
+        obj,
+        account_name=account.name,
+        account_id=account.public_id,
+        category_name=cat_name,
+    )
 
 
 # ---- Read one ---------------------------------------------------------------
@@ -222,10 +232,14 @@ def get_transaction_db(db: Session, tx_id: int) -> Transaction:
     if row is None:
         raise NotFound(f"Transaction {tx_id} was not found.")
 
-    account_name = row.account.name if row.account else "<unknown>"
     cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "")
 
-    return _tx_to_schema(row, account_name=account_name, category_name=cat_name)
+    return _tx_to_schema(
+        row,
+        account_name=row.account.name,
+        account_id=row.account.public_id,
+        category_name=cat_name,
+    )
 
 
 # ---- List with filters/pagination -------------------------------------------
@@ -241,14 +255,19 @@ def list_transactions_db(
     sort_by: str = "date_desc",
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    account: Optional[str] = None,
+    account_id: Optional[str] = None,
     q: Optional[str] = None,  # substring search across entity/text/reference
 ) -> PaginatedTransactions:
     if sort_by not in SortBy:
         raise BadRequest(f"Unsupported sort_by '{sort_by}'.")
 
     q_stmt = _get_transaction_select(
-        db, sort_by=sort_by, date_from=date_from, date_to=date_to, account=account, q=q
+        db,
+        sort_by=sort_by,
+        date_from=date_from,
+        date_to=date_to,
+        account_id=account_id,
+        q=q,
     )
 
     total = db.scalar(select(func.count()).select_from(q_stmt.subquery())) or 0
@@ -257,12 +276,12 @@ def list_transactions_db(
 
     items: List[Transaction] = []
     for r in rows:
-        account_name = r.account.name if r.account else "<unknown>"
         cat_name = resolve_category_for_db(db, entity=r.entity, text=r.text)
         items.append(
             _tx_to_schema(
                 r,
-                account_name=account_name,
+                account_name=r.account.name,
+                account_id=r.account.public_id,
                 category_name=cat_name,
             )
         )
@@ -280,7 +299,7 @@ def summarize_by_category_db(
     depth: int = 1,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    account: Optional[str] = None,
+    account_id: Optional[str] = None,
     q: Optional[str] = None,
 ) -> List[TransactionSummary]:
     """
@@ -301,7 +320,7 @@ def summarize_by_category_db(
 
     # Fetch candidate transactions
     q_stmt = _get_transaction_select(
-        db, date_from=date_from, date_to=date_to, account=account, q=q
+        db, date_from=date_from, date_to=date_to, account_id=account_id, q=q
     )
     rows: List[TransactionORM] = db.scalars(q_stmt).all()
 
@@ -327,8 +346,12 @@ def summarize_by_category_db(
             cat_name = cat_row.name
 
         # Convert row to API schema with resolved category
-        acc_name = r.account.name if r.account else "<unknown>"
-        tx_schema = _tx_to_schema(r, account_name=acc_name, category_name=cat_name)
+        tx_schema = _tx_to_schema(
+            r,
+            account_name=r.account.name,
+            account_id=r.account.public_id,
+            category_name=cat_name,
+        )
 
         # Aggregate
         sums[group_name] += r.amount

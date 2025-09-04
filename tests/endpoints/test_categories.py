@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 
 
-with open(Path(__file__).parent / "../data/categories.json") as f:
+with open(Path(__file__).parent / "../mock_data/categories.json") as f:
     CATEGORIES = json.load(f)
 
 

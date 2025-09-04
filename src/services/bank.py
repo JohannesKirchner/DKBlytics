@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import os
 import datetime as dt
 from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import sha1
 from typing import Dict, List, Optional, Tuple, Any
 
-from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 
 from dkb_robo import DKBRobo  # external lib
@@ -16,23 +14,11 @@ from ..schemas import AccountCreate, TransactionCreate
 from ..services.accounts import (
     create_account_db,
     update_account_db,
+    get_account_by_iban_hmac_db,
 )
 from ..services.transactions import create_transaction_db
-from ..services.utils import Conflict
-
-# Ensure credentials are available in env (file is optional)
-load_dotenv("dkb_credentials.env")
-
-
-# ----- Service-level errors ---------------------------------------------------
-
-
-class BankServiceError(Exception):
-    """Base class for bank integration errors."""
-
-
-class ExternalServiceError(BankServiceError):
-    """Bank API returned an error or we failed to fetch data."""
+from ..settings import load_credentials, IBAN_HMAC_KEY
+from ..utils import hmac_iban, ExternalServiceError, Conflict, NotFound
 
 
 # ----- Helpers ----------------------------------------------------------------
@@ -42,6 +28,8 @@ class ExternalServiceError(BankServiceError):
 class BankAccount:
     name: str
     amount: Optional[Any]  # Decimal-like or numeric
+    iban: str
+    holder_name: str
 
 
 @dataclass(frozen=True)
@@ -70,17 +58,6 @@ def _parse_date(value: Any) -> dt.date:
     raise ExternalServiceError(f"Unsupported date format from bank: {value!r}")
 
 
-def _load_credentials() -> Tuple[str, str, Optional[str]]:
-    user = os.getenv("DKB_USERNAME")
-    pwd = os.getenv("DKB_PASSWORD")
-    mfa = os.getenv("DKB_MFA_DEVICE")
-    if not user or not pwd:
-        raise ExternalServiceError(
-            "DKB credentials are not configured (DKB_USERNAME / DKB_PASSWORD)."
-        )
-    return user, pwd, mfa
-
-
 # ----- Fetch from bank --------------------------------------------------------
 
 
@@ -92,7 +69,7 @@ def fetch_bank_data() -> Tuple[List[BankAccount], List[List[BankTransaction]]]:
         (accounts, account_transactions)
         where accounts[i] corresponds to account_transactions[i]
     """
-    user, pwd, mfa = _load_credentials()
+    user, pwd, mfa = load_credentials()
 
     try:
         with DKBRobo(
@@ -105,7 +82,6 @@ def fetch_bank_data() -> Tuple[List[BankAccount], List[List[BankTransaction]]]:
         ) as dkb:
             # Collect accounts
             accounts_raw = list(dkb.account_dic.values())
-            print(accounts_raw)
 
             # Collect transactions per account (from Jan 1, 2023 until today)
             date_from = "01.01.2023"
@@ -128,6 +104,8 @@ def fetch_bank_data() -> Tuple[List[BankAccount], List[List[BankTransaction]]]:
         BankAccount(
             name=a.get("name", "").strip(),
             amount=a.get("amount"),
+            iban=a.get("iban"),
+            holder_name=a.get("holdername") or a.get("holderName"),
         )
         for a in accounts_raw
     ]
@@ -175,9 +153,8 @@ def get_new_transactions(db: Session) -> Dict[str, int]:
         raise
 
     inserted_counts: Dict[str, int] = defaultdict(int)
-
     for account, transactions in zip(accounts, account_transactions):
-        if not account.name:
+        if not account.iban:
             # Skip nameless accounts defensively
             continue
 
@@ -188,16 +165,30 @@ def get_new_transactions(db: Session) -> Dict[str, int]:
         else:
             balance_value = account.amount
 
+        iban_h = hmac_iban(IBAN_HMAC_KEY, account.iban)
         try:
-            create_account_db(
-                db, AccountCreate(name=account.name, balance=balance_value)
-            )
-        except Conflict:
             # Already exists → update balance only
-            update_account_db(
+            existing_account = get_account_by_iban_hmac_db(db, iban_hmac=iban_h)
+            new_or_updated_account = update_account_db(
                 db,
-                account_name=account.name,
-                payload=AccountCreate(name=account.name, balance=balance_value),
+                public_id=existing_account.public_id,
+                payload=AccountCreate(
+                    name=account.name,
+                    holder_name=account.holder_name,
+                    iban_plain=account.iban,
+                    balance=balance_value,
+                ),
+            )
+        except NotFound:
+            # Account Not Found -> create new
+            new_or_updated_account = create_account_db(
+                db,
+                AccountCreate(
+                    name=account.name,
+                    holder_name=account.holder_name,
+                    iban_plain=account.iban,
+                    balance=balance_value,
+                ),
             )
 
         # Insert transactions
@@ -206,7 +197,7 @@ def get_new_transactions(db: Session) -> Dict[str, int]:
                 payload = TransactionCreate(
                     text=t.text,
                     entity=t.peer,
-                    account=account.name,
+                    account_id=new_or_updated_account.public_id,
                     amount=t.amount,
                     date=_parse_date(t.date),
                     reference=t.customerreference,

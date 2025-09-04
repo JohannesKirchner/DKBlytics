@@ -18,9 +18,9 @@ def test_update_from_bank(client, monkeypatch):
 
     monkeypatch.setattr(bank_router, "get_new_transactions", fake_get_new_transactions)
 
-    r = client.post("/update_from_bank/")
+    r = client.post("/bank/update_from_bank/")
     assert r.status_code == 200, r.text
     data = r.json()
     assert isinstance(data, dict)
-    assert "Successfully updated transactions" in data.get("message", "")
-    assert "Checking" in data["message"] and "Savings" in data["message"]
+    assert "Bank update completed." in data.get("message", "")
+    assert "Checking" in data["inserted"] and "Savings" in data["inserted"]

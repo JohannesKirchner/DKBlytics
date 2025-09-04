@@ -1,8 +1,10 @@
 from typing import List, Dict, Optional
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
-from .utils import NotFound, Ambiguous, Conflict
+
+from ..utils import NotFound, Ambiguous, Conflict
 from ..models import Category as CategoryORM
 from ..schemas import (
     Category,

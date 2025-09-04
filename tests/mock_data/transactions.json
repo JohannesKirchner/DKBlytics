@@ -1,0 +1,66 @@
+[
+    {
+        "text": "DB Bahn ticket",
+        "entity": "DB Bahn",
+        "amount": "-80.50",
+        "date": "2025-01-11",
+        "account_name": "Girokonto",
+        "reference": null
+    },
+    {
+        "text": "Daily Shopping",
+        "entity": "Edeka",
+        "amount": "-49.23",
+        "date": "2025-01-24",
+        "account_name": "Girokonto",
+        "reference": null
+    },
+    {
+        "text": "Daily Shopping",
+        "entity": "Edeka",
+        "amount": "-23.11",
+        "date": "2025-02-03",
+        "account_name": "Girokonto",
+        "reference": "0437149362843"
+    },
+    {
+        "text": "Gas station",
+        "entity": "Shell",
+        "amount": "-45.51",
+        "date": "2025-04-05",
+        "account_name": "Girokonto",
+        "reference": null
+    },
+    {
+        "text": "Electricity Bill",
+        "entity": "Landlord",
+        "amount": "-160.00",
+        "date": "2025-05-05",
+        "account_name": "Girokonto",
+        "reference": null
+    },
+    {
+        "text": "Rent",
+        "entity": "Landlord",
+        "amount": "-1600.00",
+        "date": "2025-05-29",
+        "account_name": "Girokonto",
+        "reference": null
+    },
+    {
+        "text": "Savings",
+        "entity": "Myself",
+        "amount": "-2000.00",
+        "date": "2025-01-02",
+        "account_name": "Girokonto",
+        "reference": null
+    },
+    {
+        "text": "Savings",
+        "entity": "Myself",
+        "amount": "2000.00",
+        "date": "2025-01-02",
+        "account_name": "Tagesgeld",
+        "reference": null
+    }
+]
