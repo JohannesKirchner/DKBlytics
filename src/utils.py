@@ -1,7 +1,7 @@
 import re
 import hmac
 import datetime as dt
-from hashlib import sha1, sha256
+from hashlib import sha256
 from decimal import Decimal
 from typing import Optional
 
@@ -32,7 +32,7 @@ def make_fingerprint(
     reference: Optional[str],
 ) -> str:
     raw = f"{text}|{entity}|{amount}|{account}|{date.isoformat()}|{reference}".encode()
-    return sha1(raw).hexdigest()
+    return sha256(raw).hexdigest()
 
 
 # ----- Bank Service-level errors ---------------------------------------------------

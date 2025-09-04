@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from collections import defaultdict
 from dataclasses import dataclass
-from hashlib import sha1
+from hashlib import sha256
 from typing import Dict, List, Optional, Tuple, Any
 
 from sqlalchemy.orm import Session
@@ -143,8 +143,8 @@ def get_new_transactions(db: Session) -> Dict[str, int]:
     Returns:
         dict mapping account_name -> number of transactions inserted for that account in this run.
     """
-    # One batch hash for this whole import run (40-char hex; matches DB size)
-    batch_hash = sha1(str(dt.datetime.now().isoformat()).encode("utf-8")).hexdigest()
+    # One batch hash for this whole import run (64-char hex; matches DB size)
+    batch_hash = sha256(str(dt.datetime.now().isoformat()).encode("utf-8")).hexdigest()
 
     try:
         accounts, account_transactions = fetch_bank_data()

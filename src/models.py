@@ -108,7 +108,8 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
-    account_id: Mapped[int] = mapped_column(
+    account_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("accounts.public_id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
@@ -124,5 +125,5 @@ class Transaction(Base):
     reference: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
 
     # De-duplication
-    fingerprint: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
-    batch_hash: Mapped[Optional[str]] = mapped_column(String(40), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    batch_hash: Mapped[Optional[str]] = mapped_column(String(64), index=True)

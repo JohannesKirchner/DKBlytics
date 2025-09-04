@@ -170,7 +170,7 @@ class TransactionCreate(AppBaseModel):
     )
     batch_hash: Optional[str] = Field(
         None,
-        max_length=40,
+        max_length=64,
         description="Optional batch identifier. Duplicates are allowed within the same batch; "
         "cross-batch duplicate fingerprints are rejected.",
     )
@@ -197,12 +197,12 @@ class Transaction(AppBaseModel):
     )
     fingerprint: Optional[str] = Field(
         None,
-        max_length=40,
-        pattern=r"^[0-9a-f]{40}$",
-        description="40-char hex fingerprint for de-duplication.",
+        max_length=64,
+        pattern=r"^[0-9a-f]{64}$",
+        description="64-char hex fingerprint for de-duplication.",
     )
     batch_hash: Optional[str] = Field(
-        None, max_length=40, description="Batch identifier, if provided."
+        None, max_length=64, description="Batch identifier, if provided."
     )
     category: Optional[str] = Field(
         None, description="Resolved category name based on rules, if any."
