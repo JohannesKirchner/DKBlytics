@@ -11,6 +11,7 @@ from ..services.categories import (
     get_all_categories_db,
     get_category_by_name_db,
     build_category_tree_db,
+    delete_category_db
 )
 
 router = APIRouter(
@@ -76,3 +77,13 @@ def get_category_by_name(name: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Ambiguous as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    
+@router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category(name: int, db: Session = Depends(get_db)):
+    """Delete a category by name."""
+    try:
+        delete_category_db(db, name)
+        return
+    except NotFound as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+

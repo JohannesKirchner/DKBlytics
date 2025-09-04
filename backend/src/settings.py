@@ -53,3 +53,8 @@ def _load_bytes_from_env(var: str) -> bytes:
 
 # 32+ bytes recommended
 IBAN_HMAC_KEY: bytes = _load_bytes_from_env("IBAN_HMAC_KEY")
+
+
+def cors_origins_from_env() -> list[str]:
+    raw = os.getenv("FRONTEND_ORIGINS", "")
+    return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]

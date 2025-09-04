@@ -96,6 +96,13 @@ def get_category_by_name_db(db: Session, name: str) -> Category:
         parent_name=r.parent.name if r.parent else None,
     )
 
+def delete_category_db(db: Session, name: str) -> None:
+    row = db.get(CategoryORM, name)
+    if not row:
+        raise NotFound(f"CategoryRule with name {name} was not found.")
+    db.delete(row)
+    # flush/commit handled by dependency
+
 
 def build_category_tree_db(
     db: Session, parent_name: Optional[str] = None
