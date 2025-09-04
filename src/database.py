@@ -1,20 +1,8 @@
-import os
-from pathlib import Path
-from .models import Base
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
+from .models import Base
+from .settings import DB_PATH, SQLALCHEMY_DATABASE_URL
 
-# Resolve DB path with a sensible default
-_db_env = os.getenv("DB_PATH")
-if not _db_env or not _db_env.strip():
-    default_dir = Path("./.data")
-    default_dir.mkdir(parents=True, exist_ok=True)
-    DB_PATH = (default_dir / "app.db").resolve()
-    print(f"[database] DB_PATH not set; using default SQLite DB at {DB_PATH}")
-else:
-    DB_PATH = Path(_db_env).expanduser().resolve()
-
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{Path(DB_PATH).resolve()}"
 
 # Engine (SQLite needs check_same_thread=False in threaded servers)
 engine = create_engine(
