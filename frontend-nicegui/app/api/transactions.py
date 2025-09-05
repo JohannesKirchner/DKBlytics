@@ -18,9 +18,10 @@ def get_transactions(
     date_to: Optional[str] = None,
     account_id: Optional[str] = None,
     category: Optional[str] = None,
-    sort_by: str = "date_desc"
+    sort_by: str = "date_desc",
+    q: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Get transactions with filters."""
+    """Get transactions with filters and pagination."""
     params = {
         "limit": limit,
         "offset": offset,
@@ -34,6 +35,8 @@ def get_transactions(
         params["account_id"] = account_id
     if category:
         params["category"] = category
+    if q:
+        params["q"] = q
     
     return client.get("/api/transactions/", params=params)
 

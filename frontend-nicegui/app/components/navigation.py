@@ -10,7 +10,7 @@ def create_navigation():
             
             with ui.row().classes('gap-2'):
                 ui.link('Dashboard', '/').classes('text-white hover:text-blue-200 px-3 py-2')
-                ui.link('Categorization', '/uncategorized').classes('text-white hover:text-blue-200 px-3 py-2')
+                ui.link('Transactions', '/transactions').classes('text-white hover:text-blue-200 px-3 py-2')
                 ui.link('Categories', '/categories').classes('text-white hover:text-blue-200 px-3 py-2')
                 ui.link('Balance', '/balance').classes('text-white hover:text-blue-200 px-3 py-2')
                 ui.link('Budget', '/budget').classes('text-white hover:text-blue-200 px-3 py-2')

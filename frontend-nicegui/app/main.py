@@ -1,7 +1,7 @@
 # frontend/main.py
 from nicegui import ui
 from app.components.navigation import create_page_layout
-from app.pages.uncategorized import render_uncategorized_page
+from app.pages.transactions import render_transactions_page
 from app.pages.categories import render_categories_page
 from app.pages.balance import render_balance_page
 from app.pages.budget import render_budget_page
@@ -16,7 +16,7 @@ def home():
             with ui.card().classes('p-6'):
                 ui.label("Quick Actions").classes('text-xl mb-4')
                 with ui.column().classes('gap-2'):
-                    ui.button("Categorize Transactions", on_click=lambda: ui.navigate.to('/uncategorized')).props('color=primary')
+                    ui.button("Categorize Transactions", on_click=lambda: ui.navigate.to('/transactions')).props('color=primary')
                     ui.button("Manage Categories", on_click=lambda: ui.navigate.to('/categories')).props('outlined')
                     ui.button("View Balance", on_click=lambda: ui.navigate.to('/balance')).props('outlined')
                     ui.button("Budget Overview", on_click=lambda: ui.navigate.to('/budget')).props('outlined')
@@ -29,10 +29,10 @@ def home():
                     ui.label("3. Review your spending patterns and balance")
                     ui.label("4. Monitor your monthly/yearly budget")
 
-@ui.page('/uncategorized')
-def uncategorized():
-    with create_page_layout("Categorization"):
-        render_uncategorized_page()
+@ui.page('/transactions')
+def transactions():
+    with create_page_layout("Transactions"):
+        render_transactions_page()
 
 @ui.page('/categories')
 def categories():
