@@ -25,10 +25,20 @@ def create_loading_accounts_dropdown(label: str = "Account") -> ui.select:
     def load_accounts():
         try:
             accounts = get_all_accounts()
-            account_options = [
-                {"label": f"{acc['name']} ({acc['balance']:.2f}€)", "value": acc['public_id']} 
-                for acc in accounts
-            ]
+            account_options = []
+            for acc in accounts:
+                # Safely convert balance to float
+                balance = acc['balance']
+                if isinstance(balance, str):
+                    try:
+                        balance = float(balance)
+                    except ValueError:
+                        balance = 0.0
+                
+                account_options.append({
+                    "label": f"{acc['name']} ({balance:.2f}€)", 
+                    "value": acc['public_id']
+                })
             account_options.insert(0, {"label": "All Accounts", "value": "all"})
             
             dropdown.options = account_options
