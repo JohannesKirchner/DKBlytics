@@ -112,6 +112,7 @@ def _get_transaction_select(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     account_id: Optional[str] = None,
+    category: Optional[str] = None,
     q: Optional[str] = None,  # substring search across entity/text/reference
 ) -> Select:
     if sort_by not in SortBy:
@@ -125,6 +126,15 @@ def _get_transaction_select(
         conds.append(tx.date >= date_from)
     if date_to:
         conds.append(tx.date <= date_to)
+    if category is None:
+        # No filter → all transactions
+        pass
+    elif category.lower() == "null":
+        # Only uncategorized
+        stmt = stmt.where(Transaction.category_name.is_(None))
+    else:
+        # Only a specific category
+        stmt = stmt.where(Transaction.category_name == category)
     if account_id:
         acc = db.scalar(select(AccountORM).where(AccountORM.public_id == account_id))
         if acc is None:
@@ -256,6 +266,7 @@ def list_transactions_db(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     account_id: Optional[str] = None,
+    category: Optional[str] = None,
     q: Optional[str] = None,  # substring search across entity/text/reference
 ) -> PaginatedTransactions:
     if sort_by not in SortBy:
@@ -267,6 +278,7 @@ def list_transactions_db(
         date_from=date_from,
         date_to=date_to,
         account_id=account_id,
+        category=category,
         q=q,
     )
 

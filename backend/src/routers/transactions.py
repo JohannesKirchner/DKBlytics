@@ -60,6 +60,12 @@ def get_all_transactions(
     date_from: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
     date_to: Optional[str] = Query(None, description="Inclusive YYYY-MM-DD."),
     account_id: Optional[str] = Query(None, description="Filter by account public_id."),
+    category: Optional[str] = Query(None, description=(
+            "Optional category filter.\n"
+            "- Leave empty to list all transactions.\n"
+            "- Pass a category name to filter by that category.\n"
+            "- Pass 'null' to list uncategorized transactions."
+        )),
     q: Optional[str] = Query(
         None, description="Case-insensitive search in entity/text/reference."
     ),
@@ -74,6 +80,7 @@ def get_all_transactions(
             date_from=date_from,
             date_to=date_to,
             account_id=account_id,
+            category=category,
             q=q,
         )
     except BadRequest as e:

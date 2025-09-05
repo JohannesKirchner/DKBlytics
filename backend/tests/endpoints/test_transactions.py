@@ -45,7 +45,7 @@ def test_get_transaction_by_id(client, payload, id):
     assert response_data["entity"] == payload["entity"]
 
 
-@pytest.mark.order(13)
+@pytest.mark.order(40) # needs to be run after category rules are assigned
 @pytest.mark.parametrize(
     "query, expected_length",
     [
