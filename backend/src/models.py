@@ -64,6 +64,10 @@ class Category(Base):
         backref="children",
     )
 
+    transactions: Mapped[List["Transaction"]] = relationship(
+        "Transaction", back_populates="category"
+    )
+
     __table_args__ = (
         # Unique among siblings (same parent)
         UniqueConstraint("parent_id", "name", name="uq_categories_parent_name"),
@@ -115,6 +119,14 @@ class Transaction(Base):
         index=True,
     )
     account: Mapped[Account] = relationship("Account", back_populates="transactions")
+
+    category_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    category: Mapped[Optional[Category]] = relationship("Category", back_populates="transactions")
 
     date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)

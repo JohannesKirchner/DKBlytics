@@ -131,10 +131,10 @@ def _get_transaction_select(
         pass
     elif category.lower() == "null":
         # Only uncategorized
-        stmt = stmt.where(Transaction.category_name.is_(None))
+        conds.append(tx.category_id.is_(None))
     else:
         # Only a specific category
-        stmt = stmt.where(Transaction.category_name == category)
+        q_stmt = q_stmt.join(tx.category).where(CategoryORM.name == category)
     if account_id:
         acc = db.scalar(select(AccountORM).where(AccountORM.public_id == account_id))
         if acc is None:
