@@ -79,7 +79,7 @@ def get_category_by_name(name: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     
 @router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_category(name: int, db: Session = Depends(get_db)):
+def delete_category(name: str, db: Session = Depends(get_db)):
     """Delete a category by name."""
     try:
         delete_category_db(db, name)

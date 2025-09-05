@@ -97,9 +97,7 @@ def get_category_by_name_db(db: Session, name: str) -> Category:
     )
 
 def delete_category_db(db: Session, name: str) -> None:
-    row = db.get(CategoryORM, name)
-    if not row:
-        raise NotFound(f"CategoryRule with name {name} was not found.")
+    row = _find_unique_category_by_name(db, name)
     db.delete(row)
     # flush/commit handled by dependency
 
