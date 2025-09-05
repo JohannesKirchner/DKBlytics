@@ -21,7 +21,8 @@
 ### UI
 #### View 1 - Categorization
 - Update Button —> get recent transactions and balance from DKB and update database
-- Assign or re-assign categories to predefined types per Drag-and-Drop
+- Create new categories and optionally link them to already existing categories to parent-child relationships
+- Assign or re-assign transaction to categories per Drag-and-Drop following the category rules schme the api provides
 #### View 2 - Transactions
 - Transactions as bar chart by type for given month or year (Right Sidebar is a list with recent transactions grouped by type)
 #### View 3 - Balancd
