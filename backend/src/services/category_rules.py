@@ -71,7 +71,7 @@ def delete_category_rule_db(db: Session, rule_id: int) -> None:
 
 def _resolve_category_for_db_orm(
     db: Session, *, entity: str, text: Optional[str]
-) -> Optional[CategoryRuleORM]:
+):
     """Return the matching category ORM model for (entity, text) or None.
 
     Priority:
@@ -120,3 +120,54 @@ def resolve_category_for_db(
     """
     category = _resolve_category_for_db_orm(db=db, entity=entity, text=text)
     return category.name if category else None
+
+
+def recalculate_all_transaction_categories_db(db: Session) -> dict:
+    """Recalculate categories for ALL transactions based on current rules.
+    
+    This is more comprehensive than apply_rules_to_uncategorized_transactions_db:
+    - Updates ALL transactions, not just uncategorized ones
+    - Handles rule deletion (removes categories when no rule matches)
+    - Handles rule priority (exact rules override entity rules)
+    - Handles rule updates
+    
+    Returns statistics about the recalculation.
+    """
+    from ..models import Transaction as TransactionORM
+    
+    # Get ALL transactions
+    all_txs = db.scalars(select(TransactionORM)).all()
+    
+    stats = {
+        'total_transactions': len(all_txs),
+        'categorized': 0,
+        'uncategorized': 0,
+        'changed': 0
+    }
+    
+    for tx in all_txs:
+        # Store old category for change detection
+        old_category_id = tx.category_id
+        
+        # Resolve the correct category using current rules
+        category_orm = _resolve_category_for_db_orm(
+            db, entity=tx.entity, text=tx.text
+        )
+        
+        # Update transaction category
+        new_category_id = category_orm.id if category_orm else None
+        tx.category_id = new_category_id
+        
+        # Update statistics
+        if new_category_id:
+            stats['categorized'] += 1
+        else:
+            stats['uncategorized'] += 1
+            
+        if old_category_id != new_category_id:
+            stats['changed'] += 1
+    
+    # Commit all changes
+    db.flush()
+    
+    return stats

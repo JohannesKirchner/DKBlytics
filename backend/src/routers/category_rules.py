@@ -11,6 +11,7 @@ from ..services.category_rules import (
     get_all_category_rules_db,
     delete_category_rule_db,
     resolve_category_for_db,
+    recalculate_all_transaction_categories_db,
 )
 
 router = APIRouter(
@@ -31,9 +32,14 @@ def create_category_rule(
     Matching priority:
       1) exact match on (entity AND text)
       2) default match on (entity AND text IS NULL)
+      
+    After creating the rule, automatically applies it to existing uncategorized transactions.
     """
     try:
-        return create_category_rule_db(db, payload)
+        rule = create_category_rule_db(db, payload)
+        recalculate_all_transaction_categories_db(db)
+        
+        return rule
     except NotFound as e:
         # category_name not found
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -53,9 +59,15 @@ def get_all_category_rules(db: Session = Depends(get_db)):
 
 @router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_category_rule(rule_id: int, db: Session = Depends(get_db)):
-    """Delete a category rule by id."""
+    """Delete a category rule by id.
+    
+    After deleting the rule, recalculates all transaction categories to ensure
+    transactions previously categorized by this rule are properly updated.
+    """
     try:
         delete_category_rule_db(db, rule_id)
+        recalculate_all_transaction_categories_db(db)
+        
         return
     except NotFound as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -76,3 +88,23 @@ def resolve_rule(
     Returns the category name or null if no match.
     """
     return resolve_category_for_db(db, entity=entity, text=text)
+
+
+@router.post("/apply", status_code=status.HTTP_200_OK)
+def apply_rules_to_transactions(db: Session = Depends(get_db)):
+    """
+    Recalculate categories for ALL transactions based on current rules.
+    
+    This is a comprehensive recalculation that:
+    - Updates ALL transactions, not just uncategorized ones
+    - Handles rule deletion (removes categories when no rule matches)
+    - Handles rule priority (exact rules override entity rules)
+    """
+    try:
+        stats = recalculate_all_transaction_categories_db(db)
+        return {
+            "message": f"Recalculated {stats['total_transactions']} transactions",
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
