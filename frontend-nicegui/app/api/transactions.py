@@ -61,3 +61,24 @@ def get_transaction_summary(
         params["account_id"] = account_id
     
     return client.get("/api/transactions/summary", params=params)
+
+
+def update_transaction(tx_id: int, entity: Optional[str] = None, text: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Update transaction entity and/or text fields.
+    
+    Args:
+        tx_id: Transaction ID to update
+        entity: New entity name (optional)
+        text: New text description (optional)
+    
+    Returns:
+        Updated transaction data
+    """
+    payload = {}
+    if entity is not None:
+        payload["entity"] = entity
+    if text is not None:
+        payload["text"] = text
+    
+    return client.put(f"/api/transactions/{tx_id}", json=payload)

@@ -1,6 +1,6 @@
 # app/pages/transactions.py
 from nicegui import ui
-from app.api.transactions import get_transactions
+from app.api.transactions import get_transactions, update_transaction
 from app.api.category_rules import create_category_rule, create_entity_only_rule, apply_rules_to_transactions
 from app.components.category_dropdown import category_dropdown
 from app.utils import create_empty_state, create_loading_accounts_dropdown, create_date_inputs
@@ -77,7 +77,7 @@ def render_transactions_section():
                 })
             
             with table_container:
-                # Create table with all columns
+                # Create table with all columns including actions
                 table = ui.table(
                     columns=[
                         {'name': 'date', 'label': 'Date', 'field': 'date', 'sortable': True},
@@ -87,6 +87,7 @@ def render_transactions_section():
                         {'name': 'amount', 'label': 'Amount', 'field': 'amount', 'sortable': True},
                         {'name': 'category', 'label': 'Category', 'field': 'category'},
                         {'name': 'reference', 'label': 'Reference', 'field': 'reference'},
+                        {'name': 'actions', 'label': 'Actions', 'field': 'actions'},
                     ],
                     rows=rows,
                     row_key='id',
@@ -95,6 +96,83 @@ def render_transactions_section():
                 
                 # Configure table properties for better display
                 table.props('dense flat bordered')
+                
+                # Add edit functionality with a custom slot for actions
+                def create_edit_dialog(tx_data):
+                    """Create edit dialog for a transaction."""
+                    with ui.dialog() as dialog, ui.card().style('min-width: 400px'):
+                        ui.label('Edit Transaction').classes('text-h6 mb-4')
+                        
+                        # Create form inputs with current values
+                        entity_input = ui.input(
+                            label='Entity',
+                            value=tx_data.get('entity', ''),
+                            placeholder='Enter entity name...'
+                        ).props('filled').classes('mb-2')
+                        
+                        text_input = ui.input(
+                            label='Description',
+                            value=tx_data.get('text', ''),
+                            placeholder='Enter transaction description...'
+                        ).props('filled').classes('mb-4')
+                        
+                        # Readonly fields for context
+                        ui.label(f"Amount: {tx_data.get('amount', '')}")
+                        ui.label(f"Date: {tx_data.get('date', '')}")
+                        ui.label(f"Account: {tx_data.get('account_name', '')}")
+                        ui.separator().classes('my-4')
+                        
+                        # Action buttons
+                        with ui.row().classes('gap-2 justify-end'):
+                            ui.button('Cancel', 
+                                     on_click=dialog.close).props('flat')
+                            
+                            def save_changes():
+                                try:
+                                    # Only send changes that differ from original
+                                    entity_changed = entity_input.value != tx_data.get('entity', '')
+                                    text_changed = text_input.value != tx_data.get('text', '')
+                                    
+                                    if not entity_changed and not text_changed:
+                                        ui.notify('No changes to save', color='info')
+                                        dialog.close()
+                                        return
+                                    
+                                    # Update transaction
+                                    update_data = {}
+                                    if entity_changed:
+                                        update_data['entity'] = entity_input.value
+                                    if text_changed:
+                                        update_data['text'] = text_input.value
+                                    
+                                    update_transaction(tx_data['id'], **update_data)
+                                    ui.notify('Transaction updated successfully', color='positive')
+                                    dialog.close()
+                                    load_transactions()  # Refresh the table
+                                    
+                                except Exception as e:
+                                    ui.notify(f'Error updating transaction: {str(e)}', color='negative')
+                            
+                            ui.button('Save', 
+                                     on_click=save_changes).props('color=primary')
+                    
+                    return dialog
+                
+                # Add action buttons using table slot
+                table.add_slot('body-cell-actions', '''
+                    <q-td key="actions" :props="props">
+                        <q-btn flat round color="primary" icon="edit" size="sm"
+                               @click="$parent.$emit('edit-transaction', props.row)" />
+                    </q-td>
+                ''')
+                
+                # Handle edit button clicks
+                def handle_edit(e):
+                    tx_data = e.args
+                    dialog = create_edit_dialog(tx_data['transaction'])
+                    dialog.open()
+                
+                table.on('edit-transaction', handle_edit)
                 
                 # Add assignment controls below the table
                 ui.label("Assign Categories").classes(CSS_CLASSES['section_title'] + ' mt-6')

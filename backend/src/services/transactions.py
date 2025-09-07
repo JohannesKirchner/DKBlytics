@@ -15,6 +15,7 @@ from ..models import (
 from ..schemas import (
     Transaction,
     TransactionCreate,
+    TransactionUpdate,
     TransactionSummary,
     PaginatedTransactions,
 )
@@ -244,6 +245,62 @@ def get_transaction_db(db: Session, tx_id: int) -> Transaction:
 
     cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "")
 
+    return _tx_to_schema(
+        row,
+        account_name=row.account.name,
+        account_id=row.account.public_id,
+        category_name=cat_name,
+    )
+
+
+# ---- Update -----------------------------------------------------------------
+
+
+def update_transaction_db(db: Session, tx_id: int, payload: TransactionUpdate) -> Transaction:
+    """
+    Update transaction entity and/or text fields while preserving the original fingerprint.
+    
+    This allows manual correction of generic bank transaction descriptions
+    while maintaining deduplication integrity based on the original raw data.
+    """
+    # 1) Find existing transaction
+    row = db.scalar(
+        select(TransactionORM)
+        .options(joinedload(TransactionORM.account))
+        .where(TransactionORM.id == tx_id)
+    )
+    if row is None:
+        raise NotFound(f"Transaction {tx_id} was not found.")
+
+    # 2) Update only the fields that were provided (not None)
+    has_changes = False
+    if payload.entity is not None and payload.entity != row.entity:
+        row.entity = payload.entity
+        has_changes = True
+    if payload.text is not None and payload.text != row.text:
+        row.text = payload.text
+        has_changes = True
+
+    # 3) If no changes, just return current state
+    if not has_changes:
+        cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "")
+        return _tx_to_schema(
+            row,
+            account_name=row.account.name,
+            account_id=row.account.public_id,
+            category_name=cat_name,
+        )
+
+    # 4) Save changes (fingerprint remains unchanged)
+    try:
+        db.flush()
+    except IntegrityError as ie:
+        db.rollback()
+        raise Conflict("Could not update transaction due to a constraint violation.") from ie
+
+    # 5) Resolve updated category and return
+    cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "")
+    
     return _tx_to_schema(
         row,
         account_name=row.account.name,

@@ -18,6 +18,11 @@ class APIClient:
         response.raise_for_status()
         return response.json()
 
+    def put(self, endpoint: str, json: dict):
+        response = self.client.put(endpoint, json=json)
+        response.raise_for_status()
+        return response.json()
+
     def delete(self, endpoint: str):
         response = self.client.delete(endpoint)
         response.raise_for_status()

@@ -176,6 +176,21 @@ class TransactionCreate(AppBaseModel):
     )
 
 
+class TransactionUpdate(AppBaseModel):
+    """Payload to update transaction entity and/or text fields."""
+
+    entity: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="New counterparty/entity name. Leave null to keep existing value.",
+    )
+    text: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="New transaction description text. Leave null to keep existing value.",
+    )
+
+
 class Transaction(AppBaseModel):
     """Transaction as returned by the API."""
 

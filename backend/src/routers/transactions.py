@@ -8,11 +8,13 @@ from ..schemas import (
     PaginatedTransactions,
     Transaction,
     TransactionCreate,
+    TransactionUpdate,
     TransactionSummary,
 )
 from ..services.transactions import (
     create_transaction_db,
     get_transaction_db,
+    update_transaction_db,
     list_transactions_db,
     summarize_by_category_db,
 )
@@ -153,3 +155,24 @@ def get_transaction(
         return get_transaction_db(db, tx_id)
     except NotFound as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.put("/{tx_id}", response_model=Transaction)
+def update_transaction(
+    tx_id: int,
+    payload: TransactionUpdate,
+    db: Session = Depends(get_db),
+) -> Transaction:
+    """
+    Update transaction entity and/or text fields.
+    
+    This endpoint allows manual correction of generic transaction descriptions
+    while preserving the original fingerprint for deduplication integrity.
+    Only the entity and text fields can be modified.
+    """
+    try:
+        return update_transaction_db(db, tx_id, payload)
+    except NotFound as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Conflict as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
