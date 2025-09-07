@@ -79,10 +79,14 @@ class CategoryRule(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
+    # transaction_id is optional; when provided, this rule applies ONLY to that specific transaction
+    transaction_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     # text is optional; when NULL this acts as the default rule for the entity
     text: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
-    # entity is required (no text-only rules)
-    entity: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    # entity is required for non-transaction rules (can be NULL for transaction-specific rules)
+    entity: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, index=True)
 
     category_id: Mapped[int] = mapped_column(
         ForeignKey("categories.id", ondelete="RESTRICT"), nullable=False, index=True
@@ -90,19 +94,14 @@ class CategoryRule(Base):
     category: Mapped[Category] = relationship("Category", backref="rules")
 
     __table_args__ = (
-        # Disallow empty entity and enforce that at least entity is present.
-        # CheckConstraint(
-        #    "entity IS NOT NULL AND entity <> '' AND (text IS NULL OR text <> '')",
-        #    name="ck_category_rules_entity_and_text_not_both_empty",
-        # ),
-        # One exact rule per (entity, text) pair
+        # For transaction-specific rules: only one rule per transaction
+        UniqueConstraint("transaction_id", name="uq_category_rules_transaction_id"),
+        # For entity+text rules: one exact rule per (entity, text) pair when transaction_id is NULL
         UniqueConstraint("entity", "text", name="uq_category_rules_entity_text"),
-        # One default rule per entity (when text IS NULL)
-        # Index(
-        #    "uq_category_rules_entity_default",
-        #    "entity",
-        #    unique=True,
-        #    sqlite_where="text IS NULL",
+        # Ensure either transaction_id OR entity is present (not both NULL)
+        # CheckConstraint(
+        #     "(transaction_id IS NOT NULL) OR (entity IS NOT NULL AND entity <> '')",
+        #     name="ck_category_rules_transaction_or_entity_required",
         # ),
     )
 

@@ -220,7 +220,7 @@ def create_transaction_db(db: Session, payload: TransactionCreate) -> Transactio
             "Could not create transaction due to a constraint violation."
         ) from ie
 
-    # 5) Resolve category
+    # 5) Resolve category (transaction doesn't exist yet, so no transaction_id)
     cat_name = resolve_category_for_db(db, entity=payload.entity, text=payload.text)
 
     return _tx_to_schema(
@@ -243,7 +243,7 @@ def get_transaction_db(db: Session, tx_id: int) -> Transaction:
     if row is None:
         raise NotFound(f"Transaction {tx_id} was not found.")
 
-    cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "")
+    cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "", transaction_id=row.id)
 
     return _tx_to_schema(
         row,
@@ -299,7 +299,7 @@ def update_transaction_db(db: Session, tx_id: int, payload: TransactionUpdate) -
         raise Conflict("Could not update transaction due to a constraint violation.") from ie
 
     # 5) Resolve updated category and return
-    cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "")
+    cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "", transaction_id=row.id)
     
     return _tx_to_schema(
         row,
@@ -345,7 +345,7 @@ def list_transactions_db(
 
     items: List[Transaction] = []
     for r in rows:
-        cat_name = resolve_category_for_db(db, entity=r.entity, text=r.text)
+        cat_name = resolve_category_for_db(db, entity=r.entity, text=r.text, transaction_id=r.id)
         items.append(
             _tx_to_schema(
                 r,
@@ -400,7 +400,7 @@ def summarize_by_category_db(
     sums: Dict[Optional[str], Decimal] = defaultdict(lambda: Decimal("0"))
     bucket_items: Dict[Optional[str], List[Transaction]] = defaultdict(list)
     for r in rows:
-        cat_row = _resolve_category_for_db_orm(db, entity=r.entity, text=r.text or "")
+        cat_row = _resolve_category_for_db_orm(db, entity=r.entity, text=r.text or "", transaction_id=r.id)
         if not cat_row:
             group_name = None  # uncategorized
             cat_name = None

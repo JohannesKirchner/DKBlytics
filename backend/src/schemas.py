@@ -107,18 +107,23 @@ class CategoryRuleCreate(AppBaseModel):
     """
     Payload to create a category rule.
 
-    Matching order (implemented in the service):
-      1) exact match on (entity AND text)
-      2) default match on (entity AND text IS NULL)
+    Rule hierarchy (implemented in the service):
+      1) transaction-specific rule (transaction_id match)
+      2) exact match on (entity AND text)
+      3) default match on (entity AND text IS NULL)
     """
 
+    transaction_id: Optional[int] = Field(
+        None,
+        description="Transaction ID for transaction-specific rules. When provided, rule applies only to this transaction.",
+    )
     text: Optional[str] = Field(
         None,
         max_length=1000,
         description="Exact description text to match; use null for an entity-wide default.",
     )
-    entity: str = Field(
-        ..., max_length=500, description="Exact counterparty/entity to match."
+    entity: Optional[str] = Field(
+        None, max_length=500, description="Exact counterparty/entity to match. Required for non-transaction rules."
     )
     category_name: str = Field(
         ..., description="Name of the category to assign when the rule matches."
@@ -129,13 +134,17 @@ class CategoryRule(AppBaseModel):
     """Category rule as returned by the API."""
 
     id: int = Field(..., description="CategoryRule ID.")
+    transaction_id: Optional[int] = Field(
+        None,
+        description="Transaction ID for transaction-specific rules; null means general rule.",
+    )
     text: Optional[str] = Field(
         None,
         max_length=1000,
         description="Exact description text to match; null means entity-wide default.",
     )
-    entity: str = Field(
-        ..., max_length=500, description="Exact counterparty/entity to match."
+    entity: Optional[str] = Field(
+        None, max_length=500, description="Exact counterparty/entity to match."
     )
     category_name: str = Field(
         ..., description="Name of the category assigned by this rule."

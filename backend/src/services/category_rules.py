@@ -17,29 +17,49 @@ def create_category_rule_db(db: Session, rule: CategoryRuleCreate) -> CategoryRu
     # Find (unique) category by name
     cat = _find_unique_category_by_name(db, rule.category_name)
 
-    # Enforce no text-only rules; entity must be present (schema already does this)
-    # text can be None to mean "default for entity"
-    obj = CategoryRuleORM(
-        entity=rule.entity,
-        text=rule.text,
-        category_id=cat.id,
-    )
+    # Validate rule type
+    if rule.transaction_id is not None:
+        # Transaction-specific rule - verify transaction exists
+        from ..models import Transaction as TransactionORM
+        
+        transaction = db.get(TransactionORM, rule.transaction_id)
+        if not transaction:
+            raise NotFound(f"Transaction with id {rule.transaction_id} was not found.")
+        
+        if rule.entity is not None or rule.text is not None:
+            raise Conflict("Transaction-specific rules should not have entity or text fields.")
+        obj = CategoryRuleORM(
+            transaction_id=rule.transaction_id,
+            category_id=cat.id,
+        )
+    else:
+        # General rule (entity/text based)
+        if rule.entity is None:
+            raise Conflict("Non-transaction rules must have an entity.")
+        obj = CategoryRuleORM(
+            entity=rule.entity,
+            text=rule.text,
+            category_id=cat.id,
+        )
 
     try:
         db.add(obj)
         db.flush()
     except IntegrityError as ie:
         db.rollback()
-        # Could be uq_category_rules_entity_text or the partial unique on (entity WHERE text IS NULL)
-        conflict_msg = (
-            "A rule with this (entity, text) already exists."
-            if rule.text is not None
-            else "A default rule for this entity already exists."
-        )
+        if rule.transaction_id is not None:
+            conflict_msg = "A rule for this transaction already exists."
+        else:
+            conflict_msg = (
+                "A rule with this (entity, text) already exists."
+                if rule.text is not None
+                else "A default rule for this entity already exists."
+            )
         raise Conflict(conflict_msg) from ie
 
     return CategoryRule(
         id=obj.id,
+        transaction_id=obj.transaction_id,
         entity=obj.entity,
         text=obj.text,
         category_name=cat.name,
@@ -53,6 +73,7 @@ def get_all_category_rules_db(db: Session) -> List[CategoryRule]:
     return [
         CategoryRule(
             id=r.id,
+            transaction_id=r.transaction_id,
             entity=r.entity,
             text=r.text,
             category_name=r.category.name,
@@ -70,15 +91,27 @@ def delete_category_rule_db(db: Session, rule_id: int) -> None:
 
 
 def _resolve_category_for_db_orm(
-    db: Session, *, entity: str, text: Optional[str]
+    db: Session, *, entity: str, text: Optional[str], transaction_id: Optional[int] = None
 ):
     """Return the matching category ORM model for (entity, text) or None.
 
     Priority:
-      1) exact: entity AND text match
-      2) default: entity match AND text IS NULL
+      1) transaction-specific rule: transaction_id match
+      2) exact: entity AND text match
+      3) default: entity match AND text IS NULL
     """
-    # 1) exact
+    # 1) transaction-specific rule (highest priority)
+    if transaction_id is not None:
+        tx_rule = db.scalars(
+            select(CategoryRuleORM)
+            .options(joinedload(CategoryRuleORM.category))
+            .where(CategoryRuleORM.transaction_id == transaction_id)
+            .limit(1)
+        ).first()
+        if tx_rule:
+            return tx_rule.category
+    
+    # 2) exact rule
     if text is not None:
         exact = db.scalars(
             select(CategoryRuleORM)
@@ -87,6 +120,7 @@ def _resolve_category_for_db_orm(
                 and_(
                     CategoryRuleORM.entity == entity,
                     CategoryRuleORM.text == text,
+                    CategoryRuleORM.transaction_id.is_(None),  # Only general rules
                 )
             )
             .limit(1)
@@ -94,7 +128,7 @@ def _resolve_category_for_db_orm(
         if exact:
             return exact.category
 
-    # 2) default for entity
+    # 3) default for entity
     default = db.scalars(
         select(CategoryRuleORM)
         .options(joinedload(CategoryRuleORM.category))
@@ -102,6 +136,7 @@ def _resolve_category_for_db_orm(
             and_(
                 CategoryRuleORM.entity == entity,
                 CategoryRuleORM.text.is_(None),
+                CategoryRuleORM.transaction_id.is_(None),  # Only general rules
             )
         )
         .limit(1)
@@ -110,15 +145,16 @@ def _resolve_category_for_db_orm(
 
 
 def resolve_category_for_db(
-    db: Session, *, entity: str, text: Optional[str]
+    db: Session, *, entity: str, text: Optional[str], transaction_id: Optional[int] = None
 ) -> Optional[str]:
     """Return the matching category name for (entity, text) or None.
 
     Priority:
-      1) exact: entity AND text match
-      2) default: entity match AND text IS NULL
+      1) transaction-specific rule: transaction_id match
+      2) exact: entity AND text match
+      3) default: entity match AND text IS NULL
     """
-    category = _resolve_category_for_db_orm(db=db, entity=entity, text=text)
+    category = _resolve_category_for_db_orm(db=db, entity=entity, text=text, transaction_id=transaction_id)
     return category.name if category else None
 
 
@@ -151,7 +187,7 @@ def recalculate_all_transaction_categories_db(db: Session) -> dict:
         
         # Resolve the correct category using current rules
         category_orm = _resolve_category_for_db_orm(
-            db, entity=tx.entity, text=tx.text
+            db, entity=tx.entity, text=tx.text, transaction_id=tx.id
         )
         
         # Update transaction category

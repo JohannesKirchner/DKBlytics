@@ -28,5 +28,11 @@
         "text": null,
         "entity": "Myself",
         "category_name": "Money Transfer"
+    },
+    {
+        "transaction_id": 2,
+        "entity": null,
+        "text": null,
+        "category_name": "Car"
     }
 ]

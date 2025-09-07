@@ -1,7 +1,7 @@
 # app/pages/transactions.py
 from nicegui import ui
 from app.api.transactions import get_transactions, update_transaction
-from app.api.category_rules import create_category_rule, create_entity_only_rule, apply_rules_to_transactions
+from app.api.category_rules import create_category_rule, create_entity_only_rule, create_transaction_rule, apply_rules_to_transactions
 from app.components.category_dropdown import category_dropdown
 from app.utils import create_empty_state, create_loading_accounts_dropdown, create_date_inputs
 from app.constants import CSS_CLASSES, DEFAULTS
@@ -227,6 +227,28 @@ def render_transactions_section():
                         except Exception as e:
                             ui.notify(f"Error creating entity rules: {str(e)}", color="negative")
                     
+                    def assign_transaction_rules():
+                        if not table.selected:
+                            ui.notify("Please select transactions first", color="negative") 
+                            return
+                        if not selected_dropdown.value:
+                            ui.notify("Please select a category", color="negative")
+                            return
+                        
+                        try:
+                            # Create transaction-specific rules for each selected transaction
+                            for selected_row in table.selected:
+                                tx = selected_row['transaction']
+                                create_transaction_rule(
+                                    transaction_id=tx['id'],
+                                    category_name=selected_dropdown.value
+                                )
+                            
+                            ui.notify(f"Created transaction rules for {len(table.selected)} transactions", color="positive")
+                            load_transactions()
+                        except Exception as e:
+                            ui.notify(f"Error creating transaction rules: {str(e)}", color="negative")
+                    
                     # Buttons for different rule types
                     with ui.column().classes('gap-2'):
                         ui.button("Assign Exact Rules", 
@@ -235,11 +257,15 @@ def render_transactions_section():
                         ui.button("Assign Entity Rules", 
                                  on_click=assign_entity_only_rules,
                                  icon="business").props('color=secondary size=sm')
+                        ui.button("Assign Transaction Rules", 
+                                 on_click=assign_transaction_rules,
+                                 icon="person_pin").props('color=accent size=sm')
                     
                     # Help text
                     with ui.column().classes('text-sm text-gray-600 max-w-xs'):
                         ui.label("• Exact Rules: Match entity + text exactly")
                         ui.label("• Entity Rules: Match entity only (default for all transactions from this entity)")
+                        ui.label("• Transaction Rules: Apply category to this specific transaction only (highest priority)")
             
             # Create pagination controls
             create_pagination_controls(total, limit, offset, pagination_container, load_transactions, current_filters)

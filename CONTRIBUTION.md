@@ -323,29 +323,212 @@ class APIClient:
 
 ## 🧪 **Testing Guidelines**
 
-### **Backend Testing**
+### **Backend Testing Strategy**
 
-#### **Test Structure**
-```python
-# tests/endpoints/test_transactions.py
-def test_create_transaction_success(client, sample_account, sample_category):
-    """Test successful transaction creation."""
-    payload = {
-        "text": "Test transaction",
-        "entity": "Test Entity",
-        "amount": "100.50",
-        "date": "2024-01-01",
-        "account_id": sample_account.public_id
-    }
-    response = client.post("/api/transactions/", json=payload)
-    assert response.status_code == 201
-    assert response.json()["text"] == payload["text"]
+#### **🎯 Core Testing Principles**
+
+1. **Preserve Test Data Integrity** - Tests should NOT make permanent changes to test database
+2. **Use Mock Data First** - Define expected test scenarios in JSON mock files
+3. **Clean Up Temporary Changes** - Any dynamic test changes must be reverted
+4. **Run Complete Test Suite** - Always run full test suite; individual test files depend on setup
+
+#### **📁 Test Structure & Execution**
+
+```bash
+# ALWAYS run complete test suite (tests have dependencies)
+cd backend
+uv run pytest tests/ -v
+
+# NEVER run individual test files (will fail due to missing setup)
+# ❌ pytest tests/endpoints/test_category_rules.py  # Don't do this
+# ✅ pytest tests/ -v                                # Always do this
 ```
 
-#### **Test Categories**
-- **Unit Tests** - Individual service functions
-- **Integration Tests** - API endpoints with database
-- **Error Cases** - Invalid inputs and edge cases
+#### **🗂️ Mock Data Strategy**
+
+**Using JSON Mock Files for Happy Path Testing**
+
+```json
+// tests/mock_data/category_rules.json
+[
+    {
+        "text": null,
+        "entity": "Edeka", 
+        "category_name": "Groceries"
+    },
+    {
+        "transaction_id": 2,
+        "entity": null,
+        "text": null,
+        "category_name": "Car"
+    }
+]
+```
+
+**Benefits of Mock Data Approach:**
+- ✅ **Predictable**: Tests relate to stable, known data
+- ✅ **Non-destructive**: No permanent database changes
+- ✅ **Comprehensive**: Tests complex scenarios like rule hierarchy
+- ✅ **Maintainable**: Easy to add new test cases
+
+#### **🔄 Temporary Test Pattern**
+
+For testing edge cases that require dynamic data:
+
+```python
+@pytest.mark.order(34)  
+def test_transaction_rule_priority_temporarily(client):
+    """Test with temporary rule that gets cleaned up."""
+    # Get original state
+    response = client.get("/api/transactions/1")
+    original_tx = response.json()
+    original_category = original_tx["category"]
+    
+    # Create temporary rule
+    temp_rule_payload = {
+        "transaction_id": 1,
+        "entity": None,
+        "text": None,
+        "category_name": "TempCategory"
+    }
+    
+    create_response = client.post("/api/rules/", json=temp_rule_payload)
+    assert create_response.status_code == 201
+    rule_id = create_response.json()["id"]
+    
+    try:
+        # Test the temporary change
+        response = client.get("/api/transactions/1")
+        updated_tx = response.json()
+        assert updated_tx["category"] == "TempCategory"
+        
+    finally:
+        # ALWAYS clean up - this is critical!
+        client.delete(f"/api/rules/{rule_id}")
+        
+        # Verify cleanup worked
+        response = client.get("/api/transactions/1")
+        restored_tx = response.json()
+        assert restored_tx["category"] == original_category
+```
+
+#### **🏗️ Test Implementation Patterns**
+
+**1. Parametrized Tests with Mock Data**
+```python
+with open(Path(__file__).parent / "../mock_data/category_rules.json") as f:
+    CATEGORY_RULES = json.load(f)
+
+@pytest.mark.parametrize(
+    "payload", 
+    [pytest.param(c, id=c.get("entity", f"tx_{c.get('transaction_id')}")) 
+     for c in CATEGORY_RULES]
+)
+def test_create_category_rule(client, payload):
+    response = client.post("/api/rules/", json=payload)
+    assert response.status_code == 201, response.text
+```
+
+**2. Skip Transaction-Specific Rules in Entity Tests**
+```python
+@pytest.mark.parametrize(
+    "payload", 
+    [pytest.param(c, id=c.get("entity")) for c in CATEGORY_RULES 
+     if c.get("entity") is not None]  # Skip transaction-only rules
+)
+def test_resolve_category_rule(client, payload):
+    # Only test entity-based rules in resolution endpoint
+    pass
+```
+
+**3. Mock Data Testing for Complex Scenarios**
+```python
+def test_transaction_rule_from_mock_data(client):
+    """Test rule hierarchy using predefined mock data."""
+    # Transaction ID 2 should be overridden by transaction rule
+    response = client.get("/api/transactions/2")
+    transaction = response.json()
+    
+    # Verify transaction rule takes precedence over entity rule
+    assert transaction["entity"] == "Edeka"    # Original entity
+    assert transaction["category"] == "Car"    # Overridden by transaction rule
+    
+    # Verify rule exists in database
+    rules_response = client.get("/api/rules/")
+    rules = rules_response.json()
+    
+    transaction_rule = next(
+        (rule for rule in rules if rule.get("transaction_id") == 2), 
+        None
+    )
+    assert transaction_rule is not None
+    assert transaction_rule["category_name"] == "Car"
+```
+
+#### **⚠️ Testing Anti-Patterns to Avoid**
+
+❌ **Don't Create Permanent Test Data**
+```python
+# Bad: Leaves permanent changes
+def test_bad_approach(client):
+    client.post("/api/rules/", json={"entity": "Test", "category": "Test"})
+    # No cleanup - breaks other tests!
+```
+
+❌ **Don't Run Individual Test Files**
+```bash
+# Bad: Missing dependencies
+pytest tests/endpoints/test_category_rules.py
+```
+
+❌ **Don't Assume Test Data State**
+```python
+# Bad: Assumes specific transaction exists
+def test_bad_assumption(client):
+    response = client.get("/api/transactions/999")  # May not exist
+    # Should check existence or use known mock data
+```
+
+#### **✅ Testing Best Practices**
+
+✅ **Always Clean Up Dynamic Changes**
+```python
+try:
+    # Test logic here
+    pass
+finally:
+    # Always clean up, even if test fails
+    cleanup_test_data()
+```
+
+✅ **Use Existing Mock Data for Happy Path**
+```python
+# Good: Use predefined test scenarios
+def test_with_mock_data(client):
+    # Test scenarios already defined in JSON mock files
+    pass
+```
+
+✅ **Verify Before and After States**
+```python
+def test_temporary_change(client):
+    # 1. Get original state
+    original = get_original_state()
+    
+    # 2. Make temporary change
+    # 3. Test the change
+    # 4. Clean up
+    # 5. Verify restoration
+    
+    restored = get_restored_state() 
+    assert restored == original
+```
+
+### **Test Categories**
+- **Mock Data Tests** - Happy path scenarios using predefined JSON data
+- **Temporary Tests** - Edge cases with proper cleanup
+- **Error Tests** - Invalid inputs and constraint violations
+- **Integration Tests** - Full API endpoint testing with database
 
 ### **Frontend Testing**
 

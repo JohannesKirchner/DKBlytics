@@ -28,6 +28,15 @@ def delete_category_rule(rule_id: int) -> int:
     """Delete a category rule by ID."""
     return client.delete(f"/api/rules/{rule_id}")
 
+def create_transaction_rule(transaction_id: int, category_name: str) -> Dict[str, Any]:
+    """Create a transaction-specific category rule."""
+    return client.post("/api/rules/", data={
+        "transaction_id": transaction_id,
+        "entity": None,
+        "text": None,
+        "category_name": category_name,
+    })
+
 def apply_rules_to_transactions() -> Dict[str, Any]:
     """Apply all category rules to uncategorized transactions."""
     return client.post("/api/rules/apply", data={})

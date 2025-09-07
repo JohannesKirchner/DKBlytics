@@ -27,13 +27,14 @@ def create_category_rule(
     db: Session = Depends(get_db),
 ):
     """
-    Create a category rule.
+    Create a category rule (general or transaction-specific).
 
-    Matching priority:
-      1) exact match on (entity AND text)
-      2) default match on (entity AND text IS NULL)
+    Rule hierarchy:
+      1) transaction-specific rule (transaction_id match)
+      2) exact match on (entity AND text)  
+      3) default match on (entity AND text IS NULL)
       
-    After creating the rule, automatically applies it to existing uncategorized transactions.
+    After creating the rule, automatically recalculates all transaction categories.
     """
     try:
         rule = create_category_rule_db(db, payload)
@@ -81,6 +82,9 @@ def resolve_rule(
 ):
     """
     Resolve a category name for a given (entity, text).
+    
+    Note: This endpoint only resolves general rules (entity/text based).
+    For transaction-specific rules, use the transaction endpoints directly.
 
     Resolution order:
       1) exact (entity AND text)
