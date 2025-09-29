@@ -1,0 +1,2 @@
+<h1 class="text-2xl font-bold p-4">Category Rule Assignment</h1>
+<p class="p-4 text-sm text-neutral-600">Stub page for /categories</p>
