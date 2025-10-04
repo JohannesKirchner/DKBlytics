@@ -1,13 +1,12 @@
-<script>
-  import { API_BASE } from '$lib/config.js';
+<script lang="ts">
+  import { API_BASE } from "$lib/config";
 
   const cards = [
-    { href: '/balance', title: 'Balance Overview', blurb: 'Accounts, totals, quick filters' },
-    { href: '/categories', title: 'Category Rules', blurb: 'Assign categories and create rules' },
-    { href: '/budget', title: 'Budget Breakdown', blurb: 'Monthly/Yearly spend by category' }
+    { href: "/balance", title: "Balance Overview", blurb: "Accounts, totals, quick filters" },
+    { href: "/categories", title: "Category Rules", blurb: "Assign categories and create rules" },
+    { href: "/budget", title: "Budget Breakdown", blurb: "Monthly/Yearly spend by category" }
   ];
 </script>
-
 
 <section class="py-6">
   <h1 class="text-3xl font-bold">DKBlytics</h1>
