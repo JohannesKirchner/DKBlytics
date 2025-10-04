@@ -42,5 +42,3 @@
     {@render children()}
   </main>
 </div>
-
-{@render children?.()}
