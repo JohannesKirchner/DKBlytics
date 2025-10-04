@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   // Temporary placeholder; real logic arrives in later steps.
 </script>
 
