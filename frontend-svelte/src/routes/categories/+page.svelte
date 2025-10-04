@@ -1,2 +1,8 @@
-<h1 class="text-2xl font-bold p-4">Category Rule Assignment</h1>
-<p class="p-4 text-sm text-neutral-600">Stub page for /categories</p>
+<script>
+  // Temporary placeholder; real logic arrives in later steps.
+</script>
+
+<main class="categories-page">
+  <h1>Categories</h1>
+  <p>This page will host the hierarchical category tree once implemented.</p>
+</main>
