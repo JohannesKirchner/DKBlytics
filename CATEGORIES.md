@@ -4,8 +4,8 @@ This roadmap breaks the Categories screen into small, teachable steps so we can 
 
 ## Goals
 - Display the hierarchical category tree returned by the backend.
-- Allow creating, renaming, reparenting, and deleting categories with clear confirmations.
-- Surface usage statistics and rule links so users understand the impact of edits before saving.
+- Allow creating, renaming, and deleting categories with clear confirmations.
+- Surface usage instructions so contributors can follow each step.
 
 ## Prerequisites
 1. Read through `backend/src/services/categories.py` and the `/api/categories` endpoints so you know the request/response shapes.
@@ -16,19 +16,17 @@ This roadmap breaks the Categories screen into small, teachable steps so we can 
 1. **Create a Feature Directory**: Under `frontend-svelte/src/routes`, add a `categories/` folder with `+page.svelte` and `+page.ts`. Keeping everything in a dedicated directory makes routing explicit.
 2. **Define API Types**: Add `frontend-svelte/src/lib/types/category.ts` exporting TypeScript interfaces (`Category`, `CategoryTreeNode`, etc.) that match the backend schema. These types power editor IntelliSense and guard against payload drift.
 3. **Centralize Networking**: In `src/lib/api/`, add a reusable `apiFetch` helper (`index.ts`) and a `categories.ts` module exposing typed helpers (`fetchCategories`, `fetchCategoryTree`, `getCategoryByName`, `createCategory`, `deleteCategory`). Keep an `updateCategory` stub that throws until the backend supports updates, so the calling code can handle the missing capability explicitly.
-4. **Add a Writable Store**: Use Svelte’s `writable` to hold the category list and loading state. Expose actions like `refresh()` and `optimisticallyUpdate()` so any component consuming the tree stays in sync.
-5. **Plan the UI Layout**: Sketch the page hierarchy on paper—sidebar for metadata, main panel for the tree, modal slots for editing. This quick design avoids churn once we write markup.
-6. **Implement Initial Load**: In `+page.svelte`, call `refresh()` on mount (`onMount`) and show a loading skeleton or spinner until data arrives. Handle network errors with a visible banner describing retry options.
-7. **Render the Tree**: Build a recursive `CategoryNode.svelte` component that accepts a category, depth, and callbacks. Use indentation or a tree connector (border-left) to visualize hierarchy. Include action buttons (add child, rename, delete) per node.
-8. **Support Drag-and-Drop**: Integrate a lightweight drag library (e.g., the HTML5 API or a Svelte helper) to move nodes. When a drop occurs, call `updateCategory` with the new parent ID and update the store optimistically while showing a toast.
-9. **Inline Rename Workflow**: Toggle an editable text input in `CategoryNode` when “Rename” is clicked. On blur or Enter, validate the name, call the API, and restore view mode. Cancel resets to the previous value.
-10. **Create Category Modal**: Implement a `CategoryForm.svelte` component with name and parent selectors. Reuse it for both “add root” (parent null) and “add child” flows by passing props.
-11. **Deletion Safeguards**: Before deleting, fetch usage counts (or read from cached data). Show a confirmation dialog summarizing affected transactions/rules. Only send `deleteCategory` if the user acknowledges.
-12. **Usage and Rules Panel**: Add a detail pane that updates when a node is selected. Display `usage_count`, a link to view related rules, and a list of child counts. This reinforces the impact of edits.
-13. **Batch Changes (Optional)**: If we want a diff preview, stage edits locally (array of pending operations) and show them in a footer bar with “Apply” and “Discard” actions. Ensure API calls execute sequentially with rollback on failure.
-14. **Notification System**: Hook in a lightweight toast store (`lib/stores/toast.ts`) delivering success and error feedback. Trigger notifications after every mutation.
-15. **Accessibility & Keyboard Support**: Ensure buttons have labels, focus states are visible, and keyboard shortcuts (e.g., arrow keys to expand/collapse) are provided for power users.
-16. **Testing**: Write Vitest/Playwright checks (if available) that mount the component, mock fetch responses, and verify tree interactions. At minimum, add a `categories.spec.ts` verifying the store logic.
-17. **Documentation**: Update `USAGE.md` or create a new doc snippet with screenshots/gifs once the feature works. Annotate any environment variables or backend assumptions you needed.
+4. **Add a Writable Store**: Implement `frontend-svelte/src/lib/stores/categories.ts` using Svelte's `writable`. Track `{ isLoading, error, list, tree }`, include a `refresh(fetchFn?)` method that loads both the flat list and the tree in parallel, provide `reset()` for teardown, and `optimisticallyReplace()` to stage UI updates before the server responds. Export a singleton `categoriesStore` for components that prefer importing a ready-made store.
+5. **Plan the UI Layout**: Keep the layout focused on the tree. Use a single-column canvas for now with a toolbar above the tree list. Each node presents buttons for “Add child”, “Rename”, and “Delete”. Move detail panels or usage stats to a future enhancement if needed.
+6. **Implement Initial Load**: In `frontend-svelte/src/routes/categories/+page.svelte`, import the store, call `categoriesStore.refresh()` inside `onMount`, and derive state with the `$categoriesStore` auto-subscription. Render loading and error states before the tree placeholder so we can verify the plumbing without styling. Use `onDestroy` to reset the store when leaving the page to avoid stale state.
+7. **Render the Tree**: Build a recursive `CategoryNode.svelte` component that accepts a category, depth, and callbacks. Use indentation or a tree connector (border-left) to visualize hierarchy and propagate add/rename/delete events.
+8. **Hook Up Creation Flow**: Implement a modal or inline form that lets users add root and child categories. Validate input, call `createCategory`, refresh the store (or apply an optimistic append), and close the form on success. Handle backend conflicts (409) by surfacing a friendly message.
+9. **Implement Rename Support**: Add a rename form that toggles inline when the button is pressed. Because the backend lacks an update endpoint, decide whether to (a) add one in FastAPI and wire `updateCategory`, or (b) delete + recreate with the new name as a temporary workaround. Record whichever approach you choose.
+10. **Wire Deletion**: Use `deleteCategory` to remove nodes. Confirm with the user before deleting, handle ambiguity errors from the backend, and refresh the tree afterward. Consider a soft confirmation (“Deleting '{{name}}' moves all children to root”) once reparenting is supported.
+11. **Notification System** (Optional but recommended): Hook in a lightweight toast store (`lib/stores/toast.ts`) delivering success and error feedback. Trigger notifications after every mutation.
+12. **Drag-and-Drop (Optional)**: Once create/rename/delete are solid, explore drag-and-drop to reparent nodes. This requires a backend update route, so keep it as a stretch goal.
+13. **Accessibility & Keyboard Support**: Ensure buttons have labels, focus states are visible, and keyboard shortcuts (e.g., arrow keys to expand/collapse) are provided for power users.
+14. **Testing**: Write Vitest/Playwright checks (if available) that mount the component, mock fetch responses, and verify tree interactions. At minimum, add a `categories.spec.ts` verifying the store logic.
+15. **Documentation**: Update `USAGE.md` or create a new doc snippet with screenshots/gifs once the feature works. Annotate any environment variables or backend assumptions you needed.
 
 Follow these steps sequentially; we will tackle each in the codebase with detailed explanations and commit-sized chunks.
