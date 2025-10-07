@@ -21,10 +21,22 @@ export const load: PageServerLoad = async ({ fetch }) => {
       fetch,
       `/api/transactions/?limit=50&offset=0&date_from=${dateFrom}&date_to=${dateTo}`
     );
-    const transactions = Array.isArray(txRes) ? txRes : txRes.items ?? [];
-    const total = Array.isArray(txRes) ? txRes.length : txRes.total ?? transactions.length;
 
-    return { accounts, transactions, total };
+    let items: unknown[] = [];
+    let total = 0;
+
+    if (Array.isArray(txRes)) {
+      items = txRes;
+      total = txRes.length;
+    } else if (txRes && typeof txRes === "object") {
+      const data = txRes as { items?: unknown[]; total?: number };
+      if (Array.isArray(data.items)) {
+        items = data.items;
+      }
+      total = typeof data.total === "number" ? data.total : items.length;
+    }
+
+    return { accounts, items, total };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to load balance data";
     throw error(500, message);

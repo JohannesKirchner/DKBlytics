@@ -7,8 +7,9 @@
 
 	const links = [
     { href: '/balance', label: 'Balance' },
-    { href: '/categories', label: 'Categories' },
-    { href: '/budget', label: 'Budget' }
+    { href: '/budget', label: 'Budget' },
+    { href: '/transactions', label: 'Transactions' },
+    { href: '/categories', label: 'Categories' }
   ];
 </script>
 
