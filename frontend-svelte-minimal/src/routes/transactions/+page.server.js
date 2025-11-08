@@ -15,7 +15,7 @@ export async function load({ fetch, url }) {
   const date_from = validDate(sp.get('date_from')) ? sp.get('date_from') : null;
   const date_to   = validDate(sp.get('date_to'))   ? sp.get('date_to')   : null;
 
-  const category = sp.get('category');
+  const category = sp.get('category') === 'null' ? 'null' : (sp.get('category') || null);
   const account_id = sp.get('account_id') ?? null;
 
   const qs = new URLSearchParams({
@@ -24,24 +24,28 @@ export async function load({ fetch, url }) {
     ...(date_from ? { date_from } : {}),
     ...(date_to ? { date_to } : {}),
     ...(account_id ? { account_id } : {}),
-    ...(category ? { category }: {})
+    ...(category != null ? { category }: {})
   }).toString();
 
-  const [accRes, txRes] = await Promise.all([
+  const [accRes, catRes, txRes] = await Promise.all([
     fetch('/api/accounts/'),
+    fetch('/api/categories/'),
     fetch(`/api/transactions/?${qs}`)
   ]);
 
-  if (!accRes.ok || !txRes.ok) throw new Error('Failed to load data');
+  if (!accRes.ok || !txRes.ok || !catRes.ok) throw new Error('Failed to load data');
 
-  const [accounts, transactions] = await Promise.all([accRes.json(), txRes.json()]);
+  const [accounts, categories, transactions] = await Promise.all(
+    [accRes.json(), catRes.json(), txRes.json()]
+  );
 
   return {
-    accounts: accounts.map(a => ({ id: a.id, name: a.name })),
+    accounts: accounts.map(a => ({ id: a.public_id, name: a.name })),
+    categories: categories.map(c => c.name),
     transactions,
     limit, 
     offset,
-    filters: { q, sort_by, date_from, date_to, account_id }
+    filters: { q, sort_by, date_from, date_to, account_id, category }
   };
 }
 

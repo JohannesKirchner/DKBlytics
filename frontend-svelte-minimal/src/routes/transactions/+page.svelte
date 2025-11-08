@@ -8,6 +8,7 @@
   let date_from  = $state(data.filters.date_from ?? '');
   let date_to    = $state(data.filters.date_to ?? '');
   let account_id = $state(data.filters.account_id ?? '');
+  let category   = $state(data.filters.category ?? '')
 
   let limit = $state(data.limit);
   let offset = $state(data.offset);
@@ -21,7 +22,9 @@
     if (sort_by) sp.set('sort_by', sort_by);
     if (date_from) sp.set('date_from', date_from);
     if (date_to) sp.set('date_to', date_to);
-    if (account_id !== '' && account_id != null) sp.set('account_id', String(account_id));
+    if (category) sp.set('category', category);
+    if (account_id) sp.set('account_id', account_id);
+
     goto(`?${sp.toString()}`, { replaceState: true, noScroll: true, keepfocus: true });
   }
 
@@ -34,7 +37,8 @@
         data.filters.sort_by === sort_by &&
         (data.filters.date_from ?? '') === date_from &&
         (data.filters.date_to ?? '') === date_to &&
-        String(data.filters.account_id ?? '') === String(account_id) &&
+        (data.filters.category ?? '') === category &&
+        (data.filters.account_id ?? '') === account_id &&
         data.limit === limit && 
         data.offset === offset
     )
@@ -42,13 +46,11 @@
     clearTimeout(qTimer);
     if (changedWithoutQ && !changedQ) {
         // navigate any change that does not involve q immediately
-        console.log("Updated non Q search params")
         nav();
     }
     else if (changedQ) {
         // any change involving Q will be delayed by 500 ms to allow continous user typing
         qTimer = setTimeout(() => {offset = 0; nav()}, 500);
-        console.log("Set timer for qChange")
     } else {
         // prevent first time runs if nothing changed
         return;
@@ -56,7 +58,6 @@
   })
 </script>
 
-<h1>Recent transactions</h1>
 <div style="display:flex gap:.5rem flex-wrap:wrap align-items:end margin:.5rem 0 1rem">
   <label>Search
     <input
@@ -65,6 +66,16 @@
       placeholder="min 2 chars"
       style="padding:.25rem .5rem"
     />
+  </label>
+
+  <label>Category
+    <select value={category} onchange={(e) => category = e.currentTarget.value}>
+      <option value="">All</option>
+      <option value="null" selected={data.filters.category === 'null'}>Uncategorized</option>
+      {#each data.categories as c}
+        <option value={c} selected={data.filters.category === c}>{c}</option>
+      {/each}
+    </select>
   </label>
 
   <label>Sort
@@ -85,10 +96,7 @@
   </label>
 
   <label>Account
-    <select
-      value={String(account_id)}
-      onchange={(e) => { const v = e.currentTarget.value; account_id = v === '' ? '' : Number(v); }}
-    >
+    <select value={account_id} onchange={(e) => account_id = e.currentTarget.value}>
       <option value="">All</option>
       {#each data.accounts as a}
         <option value={a.id}>{a.name}</option>
