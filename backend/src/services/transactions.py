@@ -140,7 +140,7 @@ def _get_transaction_select(
         acc = db.scalar(select(AccountORM).where(AccountORM.public_id == account_id))
         if acc is None:
             raise NotFound(f"Couldn't find account with ID {account_id}")
-        conds.append(tx.account_id == acc.id)
+        conds.append(tx.account_id == acc.public_id)
     if q:
         pattern = f"%{q.lower()}%"
         entity_ci = func.lower(tx.entity).like(pattern)
