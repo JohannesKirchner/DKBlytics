@@ -1,3 +1,6 @@
+import { fail, redirect } from '@sveltejs/kit';
+
+
 const SORTS = new Set(['date_desc', 'date_asc', 'amount_desc', 'amount_asc']);
 const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -51,4 +54,48 @@ export async function load({ fetch, url }) {
 
 function validDate(s) {
   return typeof s === 'string' && DATE_RX.test(s);
+}
+
+export const actions = {
+  async createCategoryRule({ request, fetch }) {
+    const fd = await request.formData();
+    const rule_category = (fd.get('rule_category') || '').toString().trim();
+    const rule_schema   = (fd.get('rule_schema') || '').toString().trim();
+    let text          = (fd.get('text') || '').toString().trim();
+    let entity        = (fd.get('entity') || '').toString().trim();
+    let transactionId = (fd.get('transactionId') || '').toString().trim();
+
+    console.log(fd)
+
+    console.log(JSON.stringify({ transactionId, text, entity, rule_category }))
+
+    if (rule_schema === "by-entity") {
+      text = null;
+      transactionId = null;
+    } else if (rule_schema === "by-text") {
+      transactionId = null;
+    } else if (rule_schema === "by-transaction") {
+      entity = null;
+      text = null;
+    }
+
+    console.log(JSON.stringify({ transactionId, text, entity, rule_category }))
+
+    const res = await fetch('/api/rules/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ transactionId, text, entity, rule_category })
+    });
+
+    if (!res.ok) {
+      let msg = `Creation of transaction rule failed (${res.status})`;
+      try {
+        const data = await res.json();
+        if (data?.detail) msg = Array.isArray(data.detail) ? (data.detail[0]?.msg || msg) : data.detail;
+      } catch {}
+      return fail(res.status, { error: msg, values: { transactionId, text, entity, rule_category } });
+    }
+
+    throw redirect(303, '/transactions');
+  }
 }

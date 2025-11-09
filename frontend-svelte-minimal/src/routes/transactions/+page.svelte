@@ -1,19 +1,23 @@
 <script>
   import { goto } from '$app/navigation';
-  const { data } = $props();
+  const { data, form } = $props();
+
+  // side panel for categorization
+  let selectedTransaction  = $state(null);
+  let rule_schema   = $state('entity'); // 'entity', 'entity_text' or 'transaction'
+  let rule_category = $state('');
   
-  // local state mirrored from server
+  // local filter state and pagination from server
   let q          = $state(data.filters.q ?? '');
   let sort_by    = $state(data.filters.sort_by);
   let date_from  = $state(data.filters.date_from ?? '');
   let date_to    = $state(data.filters.date_to ?? '');
   let account_id = $state(data.filters.account_id ?? '');
   let category   = $state(data.filters.category ?? '')
+  let limit      = $state(data.limit);
+  let offset     = $state(data.offset);
 
-  let limit = $state(data.limit);
-  let offset = $state(data.offset);
-
-  // navigation helper
+  // goto page function with updated query
   function nav() {
     const sp = new URLSearchParams();
     sp.set('limit', String(limit));
@@ -105,29 +109,60 @@
   </label>
 </div>
 
-<table>
+<table class="w-full border-collapse text-sm">
     <thead>
-        <tr>
+        <tr class="border-b border-gray-500 text-left text-gray-800">
             <th>Date</th>
             <th>Account</th>
-            <th>Entity</th>
+            <th>Sender/Recipient</th>
+            <th>Description</th>
+            <th>Category</th>
             <th>Amount</th>
         </tr>
     </thead>
     <tbody>
         {#each data.transactions.items as t}
-            <tr>
-                <td>{t.date}</td>
-                <td>{t.account_name}</td>
-                <td>{t.entity}</td>
-                <td>{t.amount}</td>
+            <tr class={`border-b border-gray-300 hover:bg-gray-100 cursor-pointer ${t.id === selectedTransaction?.id ? 'bg-gray-200' : ''}`} onclick={() => {selectedTransaction=t}}>
+                <td class="px-2 py-1">{t.date}</td>
+                <td class="px-2 py-1">{t.account_name}</td>
+                <td class="px-2 py-1">{t.entity}</td>
+                <td class="px-2 py-1">{t.text}</td>
+                <td class="px-2 py-1">{t.category ?? "Uncategorized"}</td>
+                <td class="px-2 py-1">{t.amount}</td>
             </tr>
         {/each}
     </tbody>
 </table>
 
-
 <div style="margin-top: 0.5rem p-2">
-    <button onclick={() => offset = offset - limit} disabled={offset === 0}>Prev</button>
-    <button onclick={() => offset = offset + limit}>Next</button>
+    <button class="p-2 bg-gray-100 font-bold border-1 rounded-lg" onclick={() => offset = offset - limit} disabled={offset === 0}>Prev</button>
+    <button class="p-2 bg-gray-100 font-bold border-1 rounded-lg" onclick={() => offset = offset + limit}>Next</button>
 </div>
+
+<form method="POST" class="pt-5" action="?/createCategoryRule">
+  <label>Category
+    <select name="rule_category" value={rule_category} onchange={(e)=>rule_category=e.currentTarget.value}>
+      {#each data.categories as c}
+        <option value={c}>{c}</option>
+      {/each}
+    </select>
+  </label>
+
+  <label>Rule Schema
+    <select name="rule_schema" value={rule_schema} onchange={(e)=>rule_schema=e.currentTarget.value}>
+        <option value='by-entity'>by-entity</option>
+        <option value='by-text'>by-text</option>
+        <option value='by-transaction'>by-transaction</option>
+    </select>
+  </label>
+
+  <input type="hidden" name="transactionId" value={selectedTransaction?.id} />
+  <input type="hidden" name="entity" value={selectedTransaction?.entity ?? ''} />
+  <input type="hidden" name="text" value={selectedTransaction?.text ?? ''} />
+
+  <button type="submit">Create Rule</button>
+
+  {#if form?.error}
+    <p>{form.error}</p>
+  {/if}
+</form>
