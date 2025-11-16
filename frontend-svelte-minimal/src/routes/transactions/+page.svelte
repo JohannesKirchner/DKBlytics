@@ -1,5 +1,6 @@
 <script>
   import { goto } from '$app/navigation';
+  import { enhance } from '$app/forms';
   const { data, form } = $props();
 
   // side panel for categorization
@@ -139,7 +140,7 @@
     <button class="p-2 bg-gray-100 font-bold border-1 rounded-lg" onclick={() => offset = offset + limit}>Next</button>
 </div>
 
-<form method="POST" class="pt-5" action="?/createCategoryRule">
+<form method="POST" class="pt-5" action="?/createCategoryRule" use:enhance>
   <label>Category
     <select name="rule_category" value={rule_category} onchange={(e)=>rule_category=e.currentTarget.value}>
       {#each data.categories as c}
