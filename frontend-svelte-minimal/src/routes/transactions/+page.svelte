@@ -7,6 +7,7 @@
   let selectedTransaction  = $state(null);
   let rule_schema   = $state('entity'); // 'entity', 'entity_text' or 'transaction'
   let rule_category = $state('');
+  let rule_creating = $state(false);
   
   // local filter state and pagination from server
   let q          = $state(data.filters.q ?? '');
@@ -140,7 +141,11 @@
     <button class="p-2 bg-gray-100 font-bold border-1 rounded-lg" onclick={() => offset = offset + limit}>Next</button>
 </div>
 
-<form method="POST" class="pt-5" action="?/createCategoryRule" use:enhance>
+<form method="POST" class="pt-5" action="?/createCategoryRule" use:enhance={() => {
+    rule_creating = true;
+
+    return async ({ update }) => {await update(); rule_creating = false;};
+  }}>
   <label>Category
     <select name="rule_category" value={rule_category} onchange={(e)=>rule_category=e.currentTarget.value}>
       {#each data.categories as c}
@@ -161,7 +166,7 @@
   <input type="hidden" name="entity" value={selectedTransaction?.entity ?? ''} />
   <input type="hidden" name="text" value={selectedTransaction?.text ?? ''} />
 
-  <button type="submit">Create Rule</button>
+  <button type="submit" class="border-2 m-1 p-1 hover:bg-gray-100">{rule_creating ? 'Applying' : 'Create Rule'}</button>
 
   {#if form?.error}
     <p>{form.error}</p>
