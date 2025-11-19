@@ -11,7 +11,7 @@ from ..services.category_rules import (
     get_all_category_rules_db,
     delete_category_rule_db,
     resolve_category_for_db,
-    recalculate_all_transaction_categories_db,
+    recalculate_transaction_categories_db,
 )
 
 router = APIRouter(
@@ -34,11 +34,16 @@ def create_category_rule(
       2) exact match on (entity AND text)  
       3) default match on (entity AND text IS NULL)
       
-    After creating the rule, automatically recalculates all transaction categories.
+    After creating the rule, automatically recalculates matching transactions only.
     """
     try:
         rule = create_category_rule_db(db, payload)
-        recalculate_all_transaction_categories_db(db)
+        recalculate_transaction_categories_db(
+            db,
+            transaction_id=rule.transaction_id,
+            entity=rule.entity,
+            text=rule.text,
+        )
         
         return rule
     except NotFound as e:
@@ -62,12 +67,12 @@ def get_all_category_rules(db: Session = Depends(get_db)):
 def delete_category_rule(rule_id: int, db: Session = Depends(get_db)):
     """Delete a category rule by id.
     
-    After deleting the rule, recalculates all transaction categories to ensure
-    transactions previously categorized by this rule are properly updated.
+    After deleting the rule, recalculates only the transactions that could be
+    affected by the removed scope.
     """
     try:
-        delete_category_rule_db(db, rule_id)
-        recalculate_all_transaction_categories_db(db)
+        deleted_scope = delete_category_rule_db(db, rule_id)
+        recalculate_transaction_categories_db(db, **deleted_scope)
         
         return
     except NotFound as e:
@@ -95,17 +100,32 @@ def resolve_rule(
 
 
 @router.post("/apply", status_code=status.HTTP_200_OK)
-def apply_rules_to_transactions(db: Session = Depends(get_db)):
+def apply_rules_to_transactions(
+    transaction_id: Optional[int] = Query(
+        None,
+        description="Limit recalculation to a specific transaction.",
+    ),
+    entity: Optional[str] = Query(
+        None,
+        description="Limit recalculation to transactions matching this entity.",
+    ),
+    text: Optional[str] = Query(
+        None,
+        description="When entity is provided, further filter by description/text.",
+    ),
+    db: Session = Depends(get_db),
+):
     """
-    Recalculate categories for ALL transactions based on current rules.
-    
-    This is a comprehensive recalculation that:
-    - Updates ALL transactions, not just uncategorized ones
-    - Handles rule deletion (removes categories when no rule matches)
-    - Handles rule priority (exact rules override entity rules)
+    Recalculate categories for a subset of transactions based on current rules.
+    When no filters are provided this still updates all transactions.
     """
     try:
-        stats = recalculate_all_transaction_categories_db(db)
+        stats = recalculate_transaction_categories_db(
+            db,
+            transaction_id=transaction_id,
+            entity=entity,
+            text=text,
+        )
         return {
             "message": f"Recalculated {stats['total_transactions']} transactions",
             "stats": stats

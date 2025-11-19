@@ -82,12 +82,20 @@ def get_all_category_rules_db(db: Session) -> List[CategoryRule]:
     ]
 
 
-def delete_category_rule_db(db: Session, rule_id: int) -> None:
+def delete_category_rule_db(db: Session, rule_id: int) -> dict:
     row = db.get(CategoryRuleORM, rule_id)
     if not row:
         raise NotFound(f"CategoryRule with id {rule_id} was not found.")
+
+    rule_scope = {
+        "transaction_id": row.transaction_id,
+        "entity": row.entity,
+        "text": row.text,
+    }
+
     db.delete(row)
     # flush/commit handled by dependency
+    return rule_scope
 
 
 def _resolve_category_for_db_orm(
@@ -158,52 +166,59 @@ def resolve_category_for_db(
     return category.name if category else None
 
 
-def recalculate_all_transaction_categories_db(db: Session) -> dict:
-    """Recalculate categories for ALL transactions based on current rules.
-    
-    This is more comprehensive than apply_rules_to_uncategorized_transactions_db:
-    - Updates ALL transactions, not just uncategorized ones
-    - Handles rule deletion (removes categories when no rule matches)
-    - Handles rule priority (exact rules override entity rules)
-    - Handles rule updates
-    
-    Returns statistics about the recalculation.
+def recalculate_transaction_categories_db(
+    db: Session,
+    *,
+    transaction_id: Optional[int] = None,
+    entity: Optional[str] = None,
+    text: Optional[str] = None,
+) -> dict:
+    """Recalculate transaction categories for a filtered subset.
+
+    Without filters all transactions are recalculated, mirroring the previous
+    behaviour of ``recalculate_all_transaction_categories_db``. Providing
+    ``transaction_id`` takes precedence over entity/text filters.
     """
+
     from ..models import Transaction as TransactionORM
-    
-    # Get ALL transactions
-    all_txs = db.scalars(select(TransactionORM)).all()
-    
+
+    query = select(TransactionORM)
+
+    if transaction_id is not None:
+        query = query.where(TransactionORM.id == transaction_id)
+    else:
+        if entity is not None:
+            query = query.where(TransactionORM.entity == entity)
+        if text is not None:
+            query = query.where(TransactionORM.text == text)
+
+    txs = db.scalars(query).all()
+
     stats = {
-        'total_transactions': len(all_txs),
+        'total_transactions': len(txs),
         'categorized': 0,
         'uncategorized': 0,
-        'changed': 0
+        'changed': 0,
     }
-    
-    for tx in all_txs:
-        # Store old category for change detection
+
+    for tx in txs:
         old_category_id = tx.category_id
-        
-        # Resolve the correct category using current rules
+
         category_orm = _resolve_category_for_db_orm(
             db, entity=tx.entity, text=tx.text, transaction_id=tx.id
         )
-        
-        # Update transaction category
+
         new_category_id = category_orm.id if category_orm else None
         tx.category_id = new_category_id
-        
-        # Update statistics
+
         if new_category_id:
             stats['categorized'] += 1
         else:
             stats['uncategorized'] += 1
-            
+
         if old_category_id != new_category_id:
             stats['changed'] += 1
-    
-    # Commit all changes
+
     db.flush()
-    
+
     return stats
