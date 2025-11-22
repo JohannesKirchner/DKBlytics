@@ -7,7 +7,7 @@ const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
 export async function load({ fetch, url }) {
   const sp = url.searchParams;
 
-  const limit  = Number(sp.get('limit') ?? 20);
+  const limit  = Number(sp.get('limit') ?? 15);
   const offset = Number(sp.get('offset') ?? 0);
 
   const q0 = (sp.get('q') ?? '').trim();
@@ -61,10 +61,6 @@ export const actions = {
     let entity        = (fd.get('entity') || '').toString().trim();
     let transaction_id = (fd.get('transactionId') || '').toString().trim();
 
-    console.log(fd)
-
-    console.log(JSON.stringify({ transaction_id, text, entity, category_name }))
-
     if (rule_schema === "by-entity") {
       text = null;
       transaction_id = null;
@@ -74,8 +70,6 @@ export const actions = {
       entity = null;
       text = null;
     }
-
-    console.log(JSON.stringify({ transaction_id, text, entity, category_name }))
 
     const res = await fetch('/api/rules/', {
       method: 'POST',
