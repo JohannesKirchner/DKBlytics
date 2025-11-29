@@ -1,5 +1,6 @@
 const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
 const RANGE_VALUES = new Set(['30d', '3m', 'ytd', '12m', 'custom']);
+const FISCAL_MONTH_START_DAY = 7;
 
 export async function load({ fetch, url }) {
   const sp = url.searchParams;
@@ -54,46 +55,45 @@ export async function load({ fetch, url }) {
     0
   );
 
-  // --- fetch transactions for [date_from, today] -----------------------------
-  // We always fetch up to "today" so we can back-calculate balances correctly,
-  // even if the user chooses a date_to in the past.
-  const chartEnd = todayStr;
-
-  let allTx = [];
-  const limit = 500;
-  let offset = 0;
-
-  const baseParams = new URLSearchParams({
-    limit: String(limit),
-    offset: '0',
+  // --- fetch aggregated series from backend ----------------------------------
+  const seriesParams = new URLSearchParams({
     date_from,
-    date_to: chartEnd
+    date_to,
+    granularity: 'daily'
   });
-  if (account_id) baseParams.set('account_id', account_id);
+  if (account_id) seriesParams.set('account_id', account_id);
 
-  while (true) {
-    baseParams.set('offset', String(offset));
-    const res = await fetch(`/api/transactions/?${baseParams.toString()}`);
-    if (!res.ok) throw new Error('Failed to load transactions');
+  const seriesRes = await fetch(`/api/balances/series?${seriesParams.toString()}`);
+  if (!seriesRes.ok) throw new Error('Failed to load balance series');
+  const seriesRaw = await seriesRes.json();
+  const balanceSeries = Array.isArray(seriesRaw)
+    ? seriesRaw.map((p) => ({
+        date: p.date,
+        value: Number(p.balance ?? 0)
+      }))
+    : [];
 
-    const page = await res.json();
-    const items = page.items ?? [];
-    allTx = allTx.concat(items);
-
-    const total = page.total ?? allTx.length;
-    offset += limit;
-
-    if (offset >= total || items.length < limit) break;
-  }
-
-  // --- build series ----------------------------------------------------------
-  const { balanceSeries, monthlySurplus } = buildSeries({
-    transactions: allTx,
-    dateFrom: date_from,
-    displayTo: date_to,
-    chartEnd,
-    currentBalance
+  const surplusParams = new URLSearchParams({
+    date_from,
+    date_to,
+    granularity: 'fiscal_monthly'
   });
+  if (account_id) surplusParams.set('account_id', account_id);
+
+  const surplusRes = await fetch(`/api/balances/surplus?${surplusParams.toString()}`);
+  if (!surplusRes.ok) throw new Error('Failed to load surplus data');
+  const surplusRaw = await surplusRes.json();
+  const monthlySurplus = Array.isArray(surplusRaw)
+    ? surplusRaw.map((p) => {
+        const range = fiscalRangeFromEnd(p.date, date_from);
+        return {
+          label: range.label,
+          range: range.display,
+          endDate: range.end,
+          net: Number(p.delta ?? 0)
+        };
+      })
+    : [];
 
   return {
     accounts: accounts.map((a) => ({ id: a.id, name: a.name })), // no need to expose per-account balance here
@@ -168,103 +168,36 @@ function derivePresetRange(range, today) {
   };
 }
 
-function buildSeries({ transactions, dateFrom, displayTo, chartEnd, currentBalance }) {
-  const netByDate = new Map();    // YYYY-MM-DD -> sum(amount)
-  const monthlyNet = new Map();   // periodKey (YYYY-MM) -> sum(amount)
-
-  for (const tx of transactions) {
-    const d = tx.date;
-    if (d < dateFrom || d > chartEnd) continue;
-
-    const amount = Number(tx.amount ?? 0);
-
-    // daily net (for balance curve)
-    netByDate.set(d, (netByDate.get(d) || 0) + amount);
-
-    // salary-style period: 16th -> 15th
-    const pKey = salaryPeriodKey(d);
-    monthlyNet.set(pKey, (monthlyNet.get(pKey) || 0) + amount);
+function fiscalRangeFromEnd(endDateStr, minStartStr) {
+  if (!endDateStr) {
+    return {
+      start: minStartStr || '',
+      end: minStartStr || '',
+      label: minStartStr || '',
+      display: minStartStr || ''
+    };
   }
 
-  // --- daily balance series (same as before) ---
-  const startDate = parseYMD(dateFrom);
-  const endDate = parseYMD(chartEnd);
+  const end = parseYMD(endDateStr);
+  const startCandidate = fiscalPeriodStart(end);
+  const minStart = minStartStr ? parseYMD(minStartStr) : startCandidate;
+  const start = startCandidate < minStart ? minStart : startCandidate;
 
-  const allDates = [];
-  for (let d = startDate; d <= endDate; d = addDays(d, 1)) {
-    allDates.push(toYMD(d));
-  }
-
-  let B = currentBalance;
-  const fullSeries = new Array(allDates.length);
-
-  for (let i = allDates.length - 1; i >= 0; i--) {
-    const day = allDates[i];
-    fullSeries[i] = { date: day, value: B };
-
-    const delta = netByDate.get(day) || 0;
-    B -= delta;
-  }
-
-  // expose only up to user's selected end date (already clamped)
-  const balanceSeries = fullSeries.filter((p) => p.date <= displayTo);
-
-  // --- salary-style "months" (16th -> 15th) ---
-  const periodKeys = buildSalaryPeriodKeys(dateFrom, displayTo);
-  const monthlySurplus = periodKeys.map((key) => ({
-    month: key,
-    net: monthlyNet.get(key) || 0
-  }));
-
-  return { balanceSeries, monthlySurplus };
+  const startStr = toYMD(start);
+  const endStr = toYMD(end);
+  return {
+    start: startStr,
+    end: endStr,
+    label: endStr,
+    display: `${startStr} – ${endStr}`
+  };
 }
 
-function buildMonthKeys(dateFrom, dateTo) {
-  const start = parseYMD(dateFrom);
-  const end = parseYMD(dateTo);
-
-  const firstMonthStart = new Date(start.getFullYear(), start.getMonth(), 1);
-  const lastMonthStart = new Date(end.getFullYear(), end.getMonth(), 1);
-
-  const months = [];
-  for (let d = firstMonthStart; d <= lastMonthStart; d = addMonths(d, 1)) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    months.push(`${y}-${m}`);
+function fiscalPeriodStart(date) {
+  const anchor = FISCAL_MONTH_START_DAY;
+  if (date.getDate() >= anchor) {
+    return new Date(date.getFullYear(), date.getMonth(), anchor);
   }
-  return months;
-}
-
-function salaryPeriodKey(dateStr) {
-  // dateStr: 'YYYY-MM-DD'
-  const [year, month, day] = dateStr.split('-').map(Number);
-  if (day >= 16) {
-    // belongs to period starting this month
-    return `${year}-${String(month).padStart(2, '0')}`;
-  }
-
-  // belongs to previous month
-  if (month === 1) {
-    return `${year - 1}-12`;
-  }
-  return `${year}-${String(month - 1).padStart(2, '0')}`;
-}
-
-function buildSalaryPeriodKeys(dateFrom, dateTo) {
-  const firstKey = salaryPeriodKey(dateFrom);
-  const lastKey = salaryPeriodKey(dateTo);
-
-  let [sy, sm] = firstKey.split('-').map(Number);
-  const [ey, em] = lastKey.split('-').map(Number);
-
-  const keys = [];
-  while (sy < ey || (sy === ey && sm <= em)) {
-    keys.push(`${sy}-${String(sm).padStart(2, '0')}`);
-    sm += 1;
-    if (sm > 12) {
-      sm = 1;
-      sy += 1;
-    }
-  }
-  return keys;
+  const prevMonth = new Date(date.getFullYear(), date.getMonth(), 0);
+  return new Date(prevMonth.getFullYear(), prevMonth.getMonth(), anchor);
 }

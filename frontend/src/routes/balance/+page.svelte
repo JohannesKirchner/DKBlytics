@@ -58,38 +58,6 @@
     return acc ? acc.name : 'Selected account';
   }
 
-  // salary period key 'YYYY-MM' -> actual [start, end] dates (16th..15th)
-  function toYMD(date) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-
-  function salaryPeriodRangeFromKey(key) {
-    const [yStr, mStr] = key.split('-');
-    let year = Number(yStr);
-    let month = Number(mStr); // 1..12
-
-    const start = new Date(year, month - 1, 16);
-
-    let endYear = year;
-    let endMonth = month === 12 ? 1 : month + 1;
-    if (month === 12) endYear = year + 1;
-
-    const end = new Date(endYear, endMonth - 1, 15);
-
-    return {
-      start: toYMD(start),
-      end: toYMD(end)
-    };
-  }
-
-  function formatPeriodRange(key) {
-    const { start, end } = salaryPeriodRangeFromKey(key);
-    return `${start} – ${end}`;
-  }
-
   // --- navigation / URL sync -------------------------------------------------
 
   function nav() {
@@ -219,7 +187,7 @@
   function createOrUpdateMonthlyChart() {
     if (!monthlyCanvas) return;
 
-    const labels = data.monthlySurplus.map((m) => m.month);
+    const labels = data.monthlySurplus.map((m) => m.label);
     const values = data.monthlySurplus.map((m) => m.net);
 
     const config = {
@@ -228,7 +196,7 @@
         labels,
         datasets: [
           {
-            label: 'Surplus (16–15)',
+            label: 'Surplus (fiscal month)',
             data: values,
             backgroundColor: (ctx) => {
               const v = ctx.raw ?? 0;
@@ -245,7 +213,7 @@
           x: {
             title: {
               display: true,
-              text: '16th–15th period'
+              text: 'Fiscal period'
             },
             grid: {
               display: false
@@ -273,8 +241,9 @@
             callbacks: {
               title: (items) => {
                 const first = items[0];
-                const key = first.label;
-                return formatPeriodRange(key);
+                if (!first) return '';
+                const idx = first.dataIndex ?? 0;
+                return data.monthlySurplus[idx]?.range ?? first.label;
               },
               label: (ctx) => {
                 const v = ctx.parsed.y ?? 0;
@@ -424,7 +393,7 @@
       <div>
         <h2 class="text-sm font-semibold text-slate-900">Monthly surplus</h2>
         <p class="text-xs text-slate-500">
-          Net of all transactions per 16th–15th period.
+          Net of all transactions per fiscal month (7th–6th).
         </p>
       </div>
     </div>
@@ -445,7 +414,7 @@
       <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
         {#each data.monthlySurplus as m}
           <span class="rounded-full bg-slate-100 px-2 py-1">
-            {formatPeriodRange(m.month)}: {formatMoney(m.net)}
+            {m.range}: {formatMoney(m.net)}
           </span>
         {/each}
       </div>
