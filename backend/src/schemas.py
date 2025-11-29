@@ -63,6 +63,22 @@ class Account(AppBaseModel):
     balance: Decimal = Field(..., ge=0, description="Current balance.")
 
 
+# ---- Balance ---------------------------------------------------------------
+
+
+class BalancePoint(AppBaseModel):
+    """Minimal time-series point for balances."""
+
+    date: dt.date = Field(..., description="Representative date for the data point.")
+    balance: Decimal = Field(..., description="Closing balance on the given date.")
+
+
+class SurplusPoint(AppBaseModel):
+    """Minimal time-series point for surplus/net change."""
+
+    date: dt.date = Field(..., description="Representative date for the data point.")
+    delta: Decimal = Field(..., description="Net change during the bucket ending on `date`.")
+
 # ---- Category --------------------------------------------------------------
 
 

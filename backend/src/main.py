@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from .database import initialize_database
-from .routers import accounts, transactions, bank, categories, category_rules
+from .routers import accounts, balances, transactions, bank, categories, category_rules
 from .settings import cors_origins_from_env
 
 
@@ -38,6 +38,7 @@ app.add_middleware(
 
 # Include the routers to add the API endpoints
 app.include_router(accounts.router, prefix=PREFIX)
+app.include_router(balances.router, prefix=PREFIX)
 app.include_router(transactions.router, prefix=PREFIX)
 app.include_router(categories.router, prefix=PREFIX)
 app.include_router(category_rules.router, prefix=PREFIX)
