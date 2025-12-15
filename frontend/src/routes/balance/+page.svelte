@@ -274,150 +274,146 @@
   });
 </script>
 
-<!-- Header -->
-<div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-  <div>
-    <h1 class="text-xl font-semibold text-slate-900">Balances</h1>
-    <p class="text-sm text-slate-500">
-      Account balances and monthly surplus over time.
-    </p>
-  </div>
-</div>
-
-<!-- Filters -->
-<div class="mb-6 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-    <!-- Account selector -->
-    <label class="flex flex-col text-xs font-semibold uppercase tracking-wide text-slate-500">
-      Account
-      <select
-        class="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition hover:bg-white focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
-        bind:value={account_id}
-      >
-        <option value=''>All accounts</option>
-        {#each data.accounts as acc}
-          <option value={acc.id}>{acc.name}</option>
-        {/each}
-      </select>
-    </label>
-
-    <!-- Range selector -->
-    <label class="flex flex-col text-xs font-semibold uppercase tracking-wide text-slate-500">
-      Range
-      <select
-        class="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition hover:bg-white focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
-        bind:value={range}
-      >
-        <option value="30d">Last 30 days</option>
-        <option value="3m">Last 3 months</option>
-        <option value="ytd">Year to date</option>
-        <option value="12m">Last 12 months</option>
-        <option value="custom">Custom</option>
-      </select>
-    </label>
-
-    <!-- Custom dates (visible only when range=custom) -->
-    {#if range === 'custom'}
-      <div class="grid grid-cols-2 gap-3 sm:col-span-2 lg:col-span-1">
+<div class="mt-8 mx-10 flex flex-col gap-6">
+  <div class="flex flex-row justify-between">
+    <!-- Filters -->
+    <div class="mb-6 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- Account selector -->
         <label class="flex flex-col text-xs font-semibold uppercase tracking-wide text-slate-500">
-          From
-          <input
-            type="date"
+          Account
+          <select
             class="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition hover:bg-white focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
-            bind:value={date_from}
-          />
+            bind:value={account_id}
+          >
+            <option value=''>All accounts</option>
+            {#each data.accounts as acc}
+              <option value={acc.id}>{acc.name}</option>
+            {/each}
+          </select>
         </label>
+
+        <!-- Range selector -->
         <label class="flex flex-col text-xs font-semibold uppercase tracking-wide text-slate-500">
-          To
-          <input
-            type="date"
+          Range
+          <select
             class="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition hover:bg-white focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
-            bind:value={date_to}
-          />
+            bind:value={range}
+          >
+            <option value="30d">Last 30 days</option>
+            <option value="3m">Last 3 months</option>
+            <option value="ytd">Year to date</option>
+            <option value="12m">Last 12 months</option>
+            <option value="custom">Custom</option>
+          </select>
         </label>
-      </div>
-    {/if}
-  </div>
-</div>
 
-<!-- Summary card -->
-<div class="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-  <div class="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-    <div class="flex items-center justify-between">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Current balance
-        </p>
-        <p class="mt-1 text-2xl font-semibold text-slate-900">
-          {formatMoney(data.currentBalance)}
-        </p>
-        <p class="mt-1 text-xs text-slate-500">
-          {accountLabel()}
-        </p>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Charts -->
-<div class="space-y-6">
-  <!-- Balance over time -->
-  <div class="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-    <div class="mb-3 flex items-center justify-between">
-      <div>
-        <h2 class="text-sm font-semibold text-slate-900">Balance over time</h2>
-        <p class="text-xs text-slate-500">
-          {data.filters.date_from} – {data.filters.date_to} · {accountLabel()}
-        </p>
+        <!-- Custom dates (visible only when range=custom) -->
+        {#if range === 'custom'}
+          <div class="grid grid-cols-2 gap-3 sm:col-span-2 lg:col-span-1">
+            <label class="flex flex-col text-xs font-semibold uppercase tracking-wide text-slate-500">
+              From
+              <input
+                type="date"
+                class="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition hover:bg-white focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
+                bind:value={date_from}
+              />
+            </label>
+            <label class="flex flex-col text-xs font-semibold uppercase tracking-wide text-slate-500">
+              To
+              <input
+                type="date"
+                class="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition hover:bg-white focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
+                bind:value={date_to}
+              />
+            </label>
+          </div>
+        {/if}
       </div>
     </div>
 
-    {#if data.balanceSeries.length === 0}
-      <div class="py-8 text-center text-sm text-slate-500">
-        No balance data for this time frame.
-      </div>
-    {:else if !mounted || !ChartClass}
-      <div class="py-8 text-center text-sm text-slate-500">
-        Loading chart…
-      </div>
-    {:else}
-      <div class="h-64">
-        <canvas bind:this={balanceCanvas}></canvas>
-      </div>
-    {/if}
-  </div>
-
-  <!-- Monthly surplus -->
-  <div class="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-    <div class="mb-3 flex items-center justify-between">
-      <div>
-        <h2 class="text-sm font-semibold text-slate-900">Monthly surplus</h2>
-        <p class="text-xs text-slate-500">
-          Net of all transactions per fiscal month (7th–6th).
-        </p>
+    <!-- Summary card -->
+    <div class="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div class="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Current balance
+            </p>
+            <p class="mt-1 text-2xl font-semibold text-slate-900">
+              {formatMoney(data.currentBalance)}
+            </p>
+            <p class="mt-1 text-xs text-slate-500">
+              {accountLabel()}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
+  </div>
 
-    {#if data.monthlySurplus.length === 0}
-      <div class="py-8 text-center text-sm text-slate-500">
-        No transactions in this time frame.
-      </div>
-    {:else if !mounted || !ChartClass}
-      <div class="py-8 text-center text-sm text-slate-500">
-        Loading chart…
-      </div>
-    {:else}
-      <div class="h-64">
-        <canvas bind:this={monthlyCanvas}></canvas>
+  <!-- Charts -->
+  <div class="flex flex-row h-[70vh] gap-[5%]">
+    <!-- Balance over time -->
+    <div class="w-[50%] flex flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
+      <div class="mb-3 flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-900">Balance over time</h2>
+          <p class="text-xs text-slate-500">
+            {data.filters.date_from} – {data.filters.date_to} · {accountLabel()}
+          </p>
+        </div>
       </div>
 
-      <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-        {#each data.monthlySurplus as m}
-          <span class="rounded-full bg-slate-100 px-2 py-1">
-            {m.range}: {formatMoney(m.net)}
-          </span>
-        {/each}
+      {#if data.balanceSeries.length === 0}
+        <div class="py-8 text-center text-sm text-slate-500">
+          No balance data for this time frame.
+        </div>
+      {:else if !mounted || !ChartClass}
+        <div class="py-8 text-center text-sm text-slate-500">
+          Loading chart…
+        </div>
+      {:else}
+        <div class="flex-1">
+          <canvas bind:this={balanceCanvas}></canvas>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Monthly surplus -->
+    <div class="w-[45%] flex flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
+      <div class="mb-3 flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-900">Monthly surplus</h2>
+          <p class="text-xs text-slate-500">
+            Net of all transactions per fiscal month (7th–6th).
+          </p>
+        </div>
       </div>
-    {/if}
+
+      {#if data.monthlySurplus.length === 0}
+        <div class="py-8 text-center text-sm text-slate-500">
+          No transactions in this time frame.
+        </div>
+      {:else if !mounted || !ChartClass}
+        <div class="py-8 text-center text-sm text-slate-500">
+          Loading chart…
+        </div>
+      {:else}
+        <div class="flex-1">
+          <canvas bind:this={monthlyCanvas}></canvas>
+        </div>
+
+        <!--
+        <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+          {#each data.monthlySurplus as m}
+            <span class="rounded-full bg-slate-100 px-2 py-1">
+              {m.range}: {formatMoney(m.net)}
+            </span>
+          {/each}
+        </div>
+        -->
+      {/if}
+    </div>
   </div>
 </div>
