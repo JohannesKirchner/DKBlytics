@@ -5,33 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, s
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..services.bank import get_new_transactions, import_csv_data, ExternalServiceError
+from ..services.bank import import_csv_data, ExternalServiceError
 
 router = APIRouter(
     prefix="/bank",
-    tags=["Bank Integration"],
+    tags=["Bank Data Import"],
     responses={404: {"description": "Not found"}},
 )
 
-
-@router.post("/update_from_bank", status_code=status.HTTP_200_OK)
-def update_from_bank(db: Session = Depends(get_db)):
-    """
-    Connect to the bank API, fetch new transactions, insert them,
-    and update account balances.
-
-    Returns a mapping of account name -> number of inserted transactions for this run.
-    """
-    try:
-        new_transactions = get_new_transactions(db)
-    except ExternalServiceError as e:
-        # Upstream banking API is failing/unavailable
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
-
-    return {
-        "message": "Bank update completed.",
-        "inserted": new_transactions,
-    }
 
 
 @router.post("/import_csv", status_code=status.HTTP_200_OK)
@@ -44,10 +25,16 @@ async def import_csv(
     """
     Import transactions from a CSV bank statement file.
     
-    Supports multiple bank formats through the parser_type parameter.
-    Uses the same duplicate detection and import pipeline as the live bank integration.
+    Supports multiple bank formats through the parser_type parameter:
+    - 'dkb': Deutsche Kreditbank CSV exports
     
-    Returns a mapping of account name -> number of inserted transactions for this import.
+    Features:
+    - Automatic account creation/update based on IBAN
+    - Duplicate detection using transaction fingerprints
+    - Batch tracking for import runs
+    - Balance updates from CSV metadata
+    
+    Returns a mapping of account name -> number of inserted transactions.
     """
     try:
         # Read file content

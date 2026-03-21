@@ -1,13 +1,13 @@
+"""Bank integration service - CSV import functionality."""
+
 from __future__ import annotations
 
 import datetime as dt
 from collections import defaultdict
 from hashlib import sha256
-from typing import Dict, List, Optional, Tuple, Any, BinaryIO
+from typing import Dict, List, BinaryIO
 
 from sqlalchemy.orm import Session
-
-from dkb_robo import DKBRobo  # external lib
 
 from ..schemas import AccountCreate, TransactionCreate
 from ..services.accounts import (
@@ -16,16 +16,13 @@ from ..services.accounts import (
     get_account_by_iban_hmac_db,
 )
 from ..services.transactions import create_transaction_db
-from ..settings import load_credentials, IBAN_HMAC_KEY
+from ..settings import IBAN_HMAC_KEY
 from ..utils import hmac_iban, ExternalServiceError, Conflict, NotFound
 from .bank_models import BankAccount, BankTransaction
 from .csv_parsers import parse_csv_file
 
 
-# ----- Helpers ----------------------------------------------------------------
-
-
-def _parse_date(value: Any) -> dt.date:
+def _parse_date(value) -> dt.date:
     """Accept date/datetime/str and return a date. Be forgiving about formats."""
     if isinstance(value, dt.date) and not isinstance(value, dt.datetime):
         return value
@@ -42,77 +39,7 @@ def _parse_date(value: Any) -> dt.date:
     raise ExternalServiceError(f"Unsupported date format from bank: {value!r}")
 
 
-# ----- Fetch from bank --------------------------------------------------------
-
-
-def fetch_bank_data() -> Tuple[List[BankAccount], List[List[BankTransaction]]]:
-    """
-    Fetch accounts and their transactions from DKB.
-
-    Returns:
-        (accounts, account_transactions)
-        where accounts[i] corresponds to account_transactions[i]
-    """
-    user, pwd, mfa = load_credentials()
-
-    try:
-        with DKBRobo(
-            dkb_user=user,
-            dkb_password=pwd,
-            chip_tan=False,
-            mfa_device=mfa,
-            debug=False,
-            unfiltered=False,
-        ) as dkb:
-            # Collect accounts
-            accounts_raw = list(dkb.account_dic.values())
-
-            # Collect transactions per account (from Jan 1, 2023 until today)
-            date_from = "01.01.2023"
-            date_to = dt.datetime.now().strftime("%d.%m.%Y")
-            txs_per_account_raw = []
-            for acc in accounts_raw:
-                txs = dkb.get_transactions(
-                    acc["transactions"],
-                    acc["type"],
-                    date_from,
-                    date_to,
-                )
-                txs_per_account_raw.append(txs)
-
-    except Exception as exc:
-        raise ExternalServiceError(f"Failed to fetch data from DKB: {exc!r}") from exc
-
-    # Normalize to our dataclasses
-    accounts: List[BankAccount] = [
-        BankAccount(
-            name=a.get("name", "").strip(),
-            amount=a.get("amount"),
-            iban=a.get("iban"),
-            holder_name=a.get("holdername") or a.get("holderName"),
-        )
-        for a in accounts_raw
-    ]
-
-    account_transactions: List[List[BankTransaction]] = []
-    for tx_list in txs_per_account_raw:
-        norm_list: List[BankTransaction] = []
-        for t in tx_list:
-            norm_list.append(
-                BankTransaction(
-                    text=t.get("text", "") or "",
-                    peer=t.get("peer", "") or "",
-                    amount=t.get("amount"),
-                    date=t.get("date"),
-                    customerreference=t.get("customerreference"),
-                )
-            )
-        account_transactions.append(norm_list)
-
-    return accounts, account_transactions
-
-
-# ----- Import into our DB -----------------------------------------------------
+# ----- CSV Import Functions ---------------------------------------------------
 
 
 def import_bank_payload(
@@ -200,14 +127,6 @@ def import_bank_payload(
     return dict(inserted_counts)
 
 
-def get_new_transactions(db: Session) -> Dict[str, int]:
-    """Fetch data from the live bank API and store it in the DB."""
-    try:
-        accounts, account_transactions = fetch_bank_data()
-        return import_bank_payload(db, accounts, account_transactions)
-    except ExternalServiceError:
-        # Bubble up unchanged for the router to map to 502
-        raise
 
 
 def import_csv_data(

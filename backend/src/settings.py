@@ -4,9 +4,6 @@ import base64
 import binascii
 from pathlib import Path
 from dotenv import load_dotenv
-from typing import Tuple, Optional
-
-
 load_dotenv()  # loads from .env if present
 
 # Resolve DB path with a sensible default
@@ -20,17 +17,6 @@ else:
     DB_PATH = Path(_db_env).expanduser().resolve()
 
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{Path(DB_PATH).resolve()}"
-
-
-def load_credentials() -> Tuple[str, str, Optional[str]]:
-    user = os.getenv("DKB_USERNAME")
-    pwd = os.getenv("DKB_PASSWORD")
-    mfa = os.getenv("DKB_MFA_DEVICE")
-    if not user or not pwd:
-        raise KeyError(
-            "DKB credentials are not configured (DKB_USERNAME / DKB_PASSWORD)."
-        )
-    return user, pwd, mfa
 
 
 def _load_bytes_from_env(var: str) -> bytes:

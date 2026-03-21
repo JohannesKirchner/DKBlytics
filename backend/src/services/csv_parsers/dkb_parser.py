@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import re
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from typing import BinaryIO, Union, List, Optional
