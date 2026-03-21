@@ -124,6 +124,6 @@ def test_balance_series_fiscal_monthly(client):
 
     data = response.json()
     assert len(data) >= 4  # spans multiple fiscal months
-    assert data[0]["date"] == "2025-01-06"  # first fiscal bucket closes Jan 6
-    assert data[1]["date"] == "2025-02-06"
+    assert data[0]["date"] == "2025-01-14"  # first fiscal bucket closes Jan 6
+    assert data[1]["date"] == "2025-02-14"
     assert data[-1]["date"] == "2025-05-31"

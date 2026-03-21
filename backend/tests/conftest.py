@@ -56,27 +56,3 @@ def client(tmp_db_file):
     # Start the app with lifespan events
     with TestClient(app) as c:
         yield c
-
-
-@pytest.fixture(scope="session")
-def accounts_data():
-    with (DATA_DIR / "accounts.json").open() as f:
-        return json.load(f)
-
-
-@pytest.fixture(scope="session")
-def transactions_data():
-    with (DATA_DIR / "transactions.json").open() as f:
-        return json.load(f)
-
-
-@pytest.fixture(scope="session")
-def categories_data():
-    with (DATA_DIR / "categories.json").open() as f:
-        return json.load(f)
-
-
-@pytest.fixture(scope="session")
-def category_rules_data():
-    with (DATA_DIR / "category_rules.json").open() as f:
-        return json.load(f)
