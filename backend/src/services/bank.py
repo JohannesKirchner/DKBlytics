@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 from collections import defaultdict
-from dataclasses import dataclass
 from hashlib import sha256
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, BinaryIO
 
 from sqlalchemy.orm import Session
 
@@ -19,26 +18,11 @@ from ..services.accounts import (
 from ..services.transactions import create_transaction_db
 from ..settings import load_credentials, IBAN_HMAC_KEY
 from ..utils import hmac_iban, ExternalServiceError, Conflict, NotFound
+from .bank_models import BankAccount, BankTransaction
+from .csv_parsers import parse_csv_file
 
 
 # ----- Helpers ----------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class BankAccount:
-    name: str
-    amount: Optional[Any]  # Decimal-like or numeric
-    iban: str
-    holder_name: str
-
-
-@dataclass(frozen=True)
-class BankTransaction:
-    text: str
-    peer: str
-    amount: Any
-    date: Any
-    customerreference: Optional[str]
 
 
 def _parse_date(value: Any) -> dt.date:
@@ -131,43 +115,44 @@ def fetch_bank_data() -> Tuple[List[BankAccount], List[List[BankTransaction]]]:
 # ----- Import into our DB -----------------------------------------------------
 
 
-def get_new_transactions(db: Session) -> Dict[str, int]:
-    """
-    Fetch new data from the bank and insert into our DB.
-
-    - Creates accounts if missing; otherwise updates the balance to the bank-reported amount.
-    - Inserts transactions using the transaction service, passing a common batch_hash.
-    - Duplicate policy is enforced by the transaction service:
-        * Allowed: duplicates when SAME (fingerprint, batch_hash)
-        * Rejected: if a matching fingerprint already exists with a DIFFERENT batch_hash
+def import_bank_payload(
+    db: Session,
+    accounts: List[BankAccount],
+    account_transactions: List[List[BankTransaction]]
+) -> Dict[str, int]:
+    """Import bank data (accounts and transactions) into the database.
+    
+    This is the common import pipeline used by both live API and CSV import.
+    Handles account creation/update and transaction insertion with duplicate detection.
+    
+    Args:
+        db: Database session
+        accounts: List of bank accounts
+        account_transactions: List of transaction lists, one per account
+        
     Returns:
-        dict mapping account_name -> number of transactions inserted for that account in this run.
+        Dict mapping account names to number of inserted transactions
     """
+    if len(accounts) != len(account_transactions):
+        raise ExternalServiceError(
+            "Mismatched number of accounts and transaction lists"
+        )
+
     # One batch hash for this whole import run (64-char hex; matches DB size)
     batch_hash = sha256(str(dt.datetime.now().isoformat()).encode("utf-8")).hexdigest()
-
-    try:
-        accounts, account_transactions = fetch_bank_data()
-    except ExternalServiceError:
-        # Bubble up unchanged for the router to map to 502
-        raise
 
     inserted_counts: Dict[str, int] = defaultdict(int)
     for account, transactions in zip(accounts, account_transactions):
         if not account.iban:
-            # Skip nameless accounts defensively
+            # Skip accounts without IBAN
             continue
 
         # Create or update account
-        if account.amount is None:
-            # If balance not present, we still ensure the account exists with balance=0
-            balance_value = 0
-        else:
-            balance_value = account.amount
+        balance_value = account.amount if account.amount is not None else 0
 
         iban_h = hmac_iban(IBAN_HMAC_KEY, account.iban)
         try:
-            # Already exists → update balance only
+            # Account exists → update balance
             existing_account = get_account_by_iban_hmac_db(db, iban_hmac=iban_h)
             new_or_updated_account = update_account_db(
                 db,
@@ -180,7 +165,7 @@ def get_new_transactions(db: Session) -> Dict[str, int]:
                 ),
             )
         except NotFound:
-            # Account Not Found -> create new
+            # Account doesn't exist → create new
             new_or_updated_account = create_account_db(
                 db,
                 AccountCreate(
@@ -201,15 +186,65 @@ def get_new_transactions(db: Session) -> Dict[str, int]:
                     amount=t.amount,
                     date=_parse_date(t.date),
                     reference=t.customerreference,
-                    batch_hash=batch_hash,  # pass batch to satisfy duplicate policy
+                    batch_hash=batch_hash,
                 )
                 create_transaction_db(db, payload)
                 inserted_counts[account.name] += 1
             except Conflict:
-                # Cross-batch duplicate → skip silently for this batch
+                # Cross-batch duplicate → skip silently
                 continue
             except ExternalServiceError:
                 # Parse error on date or similar normalization issue
                 continue
 
     return dict(inserted_counts)
+
+
+def get_new_transactions(db: Session) -> Dict[str, int]:
+    """Fetch data from the live bank API and store it in the DB."""
+    try:
+        accounts, account_transactions = fetch_bank_data()
+        return import_bank_payload(db, accounts, account_transactions)
+    except ExternalServiceError:
+        # Bubble up unchanged for the router to map to 502
+        raise
+
+
+def import_csv_data(
+    db: Session,
+    file_obj: BinaryIO, 
+    parser_type: str,
+    holder_name: str
+) -> Dict[str, int]:
+    """Import transactions from a CSV file using the specified parser.
+    
+    This function integrates CSV parsing with the existing duplicate detection
+    and import pipeline, reusing the same logic as get_new_transactions().
+    
+    Args:
+        db: Database session
+        file_obj: File object containing CSV data
+        parser_type: Parser identifier (e.g., 'dkb')
+        holder_name: Account holder name
+        
+    Returns:
+        Dict mapping account names to number of inserted transactions
+        
+    Raises:
+        ExternalServiceError: If parsing fails or CSV format is invalid
+    """
+    try:
+        # Parse CSV file into BankAccount and BankTransaction objects
+        parsed_data = parse_csv_file(file_obj, parser_type, holder_name)
+        
+        # Use existing import pipeline - this handles all duplicate detection,
+        # account creation/update, and transaction insertion
+        return import_bank_payload(
+            db=db,
+            accounts=parsed_data.accounts,
+            account_transactions=parsed_data.transactions_per_account
+        )
+        
+    except ValueError as e:
+        # Parser errors become ExternalServiceError for consistent error handling
+        raise ExternalServiceError(f"CSV parsing error: {str(e)}") from e
