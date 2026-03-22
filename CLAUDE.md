@@ -26,8 +26,10 @@ DKBlytics is a full-stack banking analytics application that processes DKB (Deut
 - **Server-side data**: Uses `+page.server.js` files for data fetching
 
 ### Banking Integration
-- **Live API**: Direct DKB connection via `dkb-robo` library
-- **Data Models**: Clean separation between external bank data and internal database models
+- **CSV Import**: Upload DKB CSV exports via `POST /api/bank/import_csv` (multipart form: `file`, `holder_name`, `parser_type`)
+- **Parser Architecture**: `src/services/csv_parsers/` — `base.py` defines `CSVParser` ABC and `ParsedBankData`, `registry.py` holds a global `ParserRegistry`, `dkb_parser.py` is the only built-in parser
+- **Adding parsers**: Subclass `CSVParser`, implement `name`, `bank_name`, `can_parse()`, and `parse()`, then register in `ParserRegistry._register_built_in_parsers()`
+- **Bank models**: `src/services/bank_models.py` defines `BankAccount` and `BankTransaction` as intermediary models between CSV data and DB models
 
 ## Development Commands
 
@@ -80,7 +82,7 @@ npm run lint         # ESLint + Prettier check
 2. **Transactions** (orders 4-30): Create transaction data
 3. **Categories** (orders 20-25): Set up category hierarchies
 4. **Category Rules** (orders 26-39): Configure categorization rules  
-5. **Bank Integration** (orders 40-42): Test live API integration
+5. **Bank Integration** (orders 40-42): Test CSV import
 6. **Balances** (orders 50-55): Test balance calculations and analytics
 
 ### Running Tests
@@ -99,8 +101,8 @@ pytest tests/endpoints/test_bank.py::test_update_from_bank -v -s
 ## Key Features
 
 ### Transaction Management
-- **Live Bank API**: Direct connection to DKB via `dkb-robo` integration
-- **Duplicate Detection**: Batch-aware duplicate prevention using fingerprints
+- **CSV Import**: DKB CSV exports parsed by pluggable parser system; no live bank API
+- **Duplicate Detection**: Batch-aware duplicate prevention using transaction fingerprints
 - **Categorization**: Rule-based automatic categorization with entity matching
 
 ### Balance Analytics
