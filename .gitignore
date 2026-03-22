@@ -6,6 +6,9 @@ dist/
 wheels/
 *.egg-info
 
+# AI Tooling
+CLAUDE.md
+
 # OS files
 .DS_Store
 
