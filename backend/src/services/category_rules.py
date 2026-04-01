@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from sqlalchemy import select, and_
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +13,57 @@ from ..schemas import (
 )
 
 
+class _RuleMatch(NamedTuple):
+    category_id: int
+    category_name: str
+
+
+class RulesIndex:
+    """Loads all category rules in one query and resolves categories in memory."""
+
+    def __init__(self, db: Session) -> None:
+        rules = db.scalars(
+            select(CategoryRuleORM).options(joinedload(CategoryRuleORM.category))
+        ).all()
+        self._tx: Dict[int, _RuleMatch] = {}
+        self._entity_text: Dict[Tuple[str, str], _RuleMatch] = {}
+        self._entity_default: Dict[str, _RuleMatch] = {}
+
+        for r in rules:
+            match = _RuleMatch(r.category.id, r.category.name)
+            if r.transaction_id is not None:
+                self._tx[r.transaction_id] = match
+            elif r.entity is not None and r.text is not None:
+                self._entity_text[(r.entity, r.text)] = match
+            elif r.entity is not None:
+                self._entity_default[r.entity] = match
+
+    def resolve(
+        self,
+        entity: str,
+        text: Optional[str],
+        transaction_id: Optional[int] = None,
+    ) -> Optional[_RuleMatch]:
+        if transaction_id is not None:
+            match = self._tx.get(transaction_id)
+            if match:
+                return match
+        if text is not None:
+            match = self._entity_text.get((entity, text))
+            if match:
+                return match
+        return self._entity_default.get(entity)
+
+    def resolve_name(
+        self,
+        entity: str,
+        text: Optional[str],
+        transaction_id: Optional[int] = None,
+    ) -> Optional[str]:
+        match = self.resolve(entity, text, transaction_id)
+        return match.category_name if match else None
+
+
 def create_category_rule_db(db: Session, rule: CategoryRuleCreate) -> CategoryRule:
     # Find (unique) category by name
     cat = _find_unique_category_by_name(db, rule.category_name)
@@ -21,11 +72,11 @@ def create_category_rule_db(db: Session, rule: CategoryRuleCreate) -> CategoryRu
     if rule.transaction_id is not None:
         # Transaction-specific rule - verify transaction exists
         from ..models import Transaction as TransactionORM
-        
+
         transaction = db.get(TransactionORM, rule.transaction_id)
         if not transaction:
             raise NotFound(f"Transaction with id {rule.transaction_id} was not found.")
-        
+
         if rule.entity is not None or rule.text is not None:
             raise Conflict("Transaction-specific rules should not have entity or text fields.")
         obj = CategoryRuleORM(
@@ -56,6 +107,14 @@ def create_category_rule_db(db: Session, rule: CategoryRuleCreate) -> CategoryRu
                 else "A default rule for this entity already exists."
             )
         raise Conflict(conflict_msg) from ie
+
+    # Recalculate affected transactions so category_id stays current
+    if rule.transaction_id is not None:
+        recalculate_transaction_categories_db(db, transaction_id=rule.transaction_id)
+    elif rule.text is not None:
+        recalculate_transaction_categories_db(db, entity=rule.entity, text=rule.text)
+    else:
+        recalculate_transaction_categories_db(db, entity=rule.entity)
 
     return CategoryRule(
         id=obj.id,
@@ -94,7 +153,16 @@ def delete_category_rule_db(db: Session, rule_id: int) -> dict:
     }
 
     db.delete(row)
-    # flush/commit handled by dependency
+    db.flush()
+
+    # Recalculate affected transactions so category_id reflects the removed rule
+    if rule_scope["transaction_id"] is not None:
+        recalculate_transaction_categories_db(db, transaction_id=rule_scope["transaction_id"])
+    elif rule_scope["entity"] is not None and rule_scope["text"] is not None:
+        recalculate_transaction_categories_db(db, entity=rule_scope["entity"], text=rule_scope["text"])
+    elif rule_scope["entity"] is not None:
+        recalculate_transaction_categories_db(db, entity=rule_scope["entity"])
+
     return rule_scope
 
 
@@ -118,7 +186,7 @@ def _resolve_category_for_db_orm(
         ).first()
         if tx_rule:
             return tx_rule.category
-    
+
     # 2) exact rule
     if text is not None:
         exact = db.scalars(
@@ -175,9 +243,9 @@ def recalculate_transaction_categories_db(
 ) -> dict:
     """Recalculate transaction categories for a filtered subset.
 
-    Without filters all transactions are recalculated, mirroring the previous
-    behaviour of ``recalculate_all_transaction_categories_db``. Providing
+    Without filters all transactions are recalculated. Providing
     ``transaction_id`` takes precedence over entity/text filters.
+    Uses a single bulk rules load to avoid N+1 queries.
     """
 
     from ..models import Transaction as TransactionORM
@@ -194,6 +262,8 @@ def recalculate_transaction_categories_db(
 
     txs = db.scalars(query).all()
 
+    rules_index = RulesIndex(db)
+
     stats = {
         'total_transactions': len(txs),
         'categorized': 0,
@@ -203,12 +273,8 @@ def recalculate_transaction_categories_db(
 
     for tx in txs:
         old_category_id = tx.category_id
-
-        category_orm = _resolve_category_for_db_orm(
-            db, entity=tx.entity, text=tx.text, transaction_id=tx.id
-        )
-
-        new_category_id = category_orm.id if category_orm else None
+        match = rules_index.resolve(tx.entity, tx.text, tx.id)
+        new_category_id = match.category_id if match else None
         tx.category_id = new_category_id
 
         if new_category_id:

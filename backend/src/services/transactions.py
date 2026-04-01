@@ -20,7 +20,7 @@ from ..schemas import (
     PaginatedTransactions,
 )
 from ..utils import make_fingerprint, Conflict, NotFound, BadRequest
-from .category_rules import resolve_category_for_db, _resolve_category_for_db_orm
+from .category_rules import RulesIndex
 from .categories import _find_unique_category_by_name
 
 
@@ -120,7 +120,7 @@ def _get_transaction_select(
         raise BadRequest(f"Unsupported sort_by '{sort_by}'.")
 
     tx = TransactionORM
-    q_stmt = select(tx).options(joinedload(tx.account))
+    q_stmt = select(tx).options(joinedload(tx.account), joinedload(tx.category))
 
     conds = []
     if date_from:
@@ -220,14 +220,15 @@ def create_transaction_db(db: Session, payload: TransactionCreate) -> Transactio
             "Could not create transaction due to a constraint violation."
         ) from ie
 
-    # 5) Resolve category (transaction doesn't exist yet, so no transaction_id)
-    cat_name = resolve_category_for_db(db, entity=payload.entity, text=payload.text)
+    # 5) Resolve and persist category (no transaction_id yet — no tx-specific rules possible)
+    match = RulesIndex(db).resolve(entity=payload.entity, text=payload.text)
+    obj.category_id = match.category_id if match else None
 
     return _tx_to_schema(
         obj,
         account_name=account.name,
         account_id=account.public_id,
-        category_name=cat_name,
+        category_name=match.category_name if match else None,
     )
 
 
@@ -237,19 +238,17 @@ def create_transaction_db(db: Session, payload: TransactionCreate) -> Transactio
 def get_transaction_db(db: Session, tx_id: int) -> Transaction:
     row = db.scalar(
         select(TransactionORM)
-        .options(joinedload(TransactionORM.account))
+        .options(joinedload(TransactionORM.account), joinedload(TransactionORM.category))
         .where(TransactionORM.id == tx_id)
     )
     if row is None:
         raise NotFound(f"Transaction {tx_id} was not found.")
 
-    cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "", transaction_id=row.id)
-
     return _tx_to_schema(
         row,
         account_name=row.account.name,
         account_id=row.account.public_id,
-        category_name=cat_name,
+        category_name=row.category.name if row.category else None,
     )
 
 
@@ -266,7 +265,7 @@ def update_transaction_db(db: Session, tx_id: int, payload: TransactionUpdate) -
     # 1) Find existing transaction
     row = db.scalar(
         select(TransactionORM)
-        .options(joinedload(TransactionORM.account))
+        .options(joinedload(TransactionORM.account), joinedload(TransactionORM.category))
         .where(TransactionORM.id == tx_id)
     )
     if row is None:
@@ -281,31 +280,30 @@ def update_transaction_db(db: Session, tx_id: int, payload: TransactionUpdate) -
         row.text = payload.text
         has_changes = True
 
-    # 3) If no changes, just return current state
+    # 3) If no changes, return current state
     if not has_changes:
-        cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "")
         return _tx_to_schema(
             row,
             account_name=row.account.name,
             account_id=row.account.public_id,
-            category_name=cat_name,
+            category_name=row.category.name if row.category else None,
         )
 
-    # 4) Save changes (fingerprint remains unchanged)
+    # 4) Re-resolve and persist category for updated entity/text, then save
+    match = RulesIndex(db).resolve(entity=row.entity, text=row.text, transaction_id=row.id)
+    row.category_id = match.category_id if match else None
+
     try:
         db.flush()
     except IntegrityError as ie:
         db.rollback()
         raise Conflict("Could not update transaction due to a constraint violation.") from ie
 
-    # 5) Resolve updated category and return
-    cat_name = resolve_category_for_db(db, entity=row.entity, text=row.text or "", transaction_id=row.id)
-    
     return _tx_to_schema(
         row,
         account_name=row.account.name,
         account_id=row.account.public_id,
-        category_name=cat_name,
+        category_name=match.category_name if match else None,
     )
 
 
@@ -343,17 +341,15 @@ def list_transactions_db(
     q_stmt = q_stmt.limit(limit).offset(offset)
     rows: List[TransactionORM] = db.scalars(q_stmt).all()
 
-    items: List[Transaction] = []
-    for r in rows:
-        cat_name = resolve_category_for_db(db, entity=r.entity, text=r.text, transaction_id=r.id)
-        items.append(
-            _tx_to_schema(
-                r,
-                account_name=r.account.name,
-                account_id=r.account.public_id,
-                category_name=cat_name,
-            )
+    items: List[Transaction] = [
+        _tx_to_schema(
+            r,
+            account_name=r.account.name,
+            account_id=r.account.public_id,
+            category_name=r.category.name if r.category else None,
         )
+        for r in rows
+    ]
 
     return PaginatedTransactions(items=items, total=total, limit=limit, offset=offset)
 
@@ -400,19 +396,18 @@ def summarize_by_category_db(
     sums: Dict[Optional[str], Decimal] = defaultdict(lambda: Decimal("0"))
     bucket_items: Dict[Optional[str], List[Transaction]] = defaultdict(list)
     for r in rows:
-        cat_row = _resolve_category_for_db_orm(db, entity=r.entity, text=r.text or "", transaction_id=r.id)
-        if not cat_row:
+        if not r.category_id:
             group_name = None  # uncategorized
             cat_name = None
         else:
             group_id = _ancestor_at_scope_depth(
-                cat_row.id, parent_by_id, scope_id, depth
+                r.category_id, parent_by_id, scope_id, depth
             )
             if group_id is None:
                 # outside scope; skip
                 continue
             group_name = name_by_id[group_id]
-            cat_name = cat_row.name
+            cat_name = r.category.name
 
         # Convert row to API schema with resolved category
         tx_schema = _tx_to_schema(
