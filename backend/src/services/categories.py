@@ -111,8 +111,10 @@ def delete_category_db(db: Session, id: int) -> None:
     row = _get_or_404(db, id)
     if _is_protected_root(row):
         raise Conflict(f"Root category '{row.name}' cannot be deleted.")
+    # ORM cascade on the `children` and `rules` backrefs removes descendants
+    # and any rules that pointed at deleted categories. Transactions get
+    # category_id NULLed via the FK's ON DELETE SET NULL.
     db.delete(row)
-    # flush/commit handled by dependency
 
 
 def build_category_tree_db(

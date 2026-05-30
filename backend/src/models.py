@@ -13,7 +13,7 @@ from sqlalchemy import (
     Numeric,
     UniqueConstraint,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, backref
 
 
 class Base(DeclarativeBase):
@@ -57,11 +57,14 @@ class Category(Base):
         ForeignKey("categories.id", ondelete="RESTRICT"), nullable=True
     )
 
+    # Deleting a category cascades to its descendants and to any rules that
+    # point at the deleted categories. Transactions are NULLed via the FK's
+    # ON DELETE SET NULL ("Uncategorized").
     parent: Mapped[Optional[Category]] = relationship(
         "Category",
         remote_side=[id],
         foreign_keys=[parent_id],
-        backref="children",
+        backref=backref("children", cascade="all"),
     )
 
     transactions: Mapped[List["Transaction"]] = relationship(
@@ -91,7 +94,9 @@ class CategoryRule(Base):
     category_id: Mapped[int] = mapped_column(
         ForeignKey("categories.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    category: Mapped[Category] = relationship("Category", backref="rules")
+    category: Mapped[Category] = relationship(
+        "Category", backref=backref("rules", cascade="all")
+    )
 
     __table_args__ = (
         # For transaction-specific rules: only one rule per transaction

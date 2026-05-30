@@ -123,3 +123,40 @@ def test_seeded_root_cannot_be_modified(client, root):
 
     del_resp = client.delete(f"/api/categories/{cat_id}")
     assert del_resp.status_code == 409
+
+
+@pytest.mark.order(26)
+def test_delete_cascades_to_subtree_and_rules(client):
+    """Deleting a category should also delete its descendants and any rules
+    pointing at the deleted categories. Self-contained: creates and deletes
+    its own subtree, leaving the suite's other fixtures untouched."""
+    ausgaben_id = _find_id(client, "Ausgaben")
+
+    parent_id = client.post(
+        "/api/categories/", json={"name": "CascadeRoot", "parent_id": ausgaben_id}
+    ).json()["id"]
+    child_id = client.post(
+        "/api/categories/", json={"name": "CascadeChild", "parent_id": parent_id}
+    ).json()["id"]
+    grandchild_id = client.post(
+        "/api/categories/", json={"name": "CascadeLeaf", "parent_id": child_id}
+    ).json()["id"]
+
+    rule_resp = client.post(
+        "/api/rules/",
+        json={"entity": "CascadeEntity", "category_name": "CascadeLeaf"},
+    )
+    assert rule_resp.status_code == 201, rule_resp.text
+    rule_id = rule_resp.json()["id"]
+
+    del_resp = client.delete(f"/api/categories/{parent_id}")
+    assert del_resp.status_code == 204, del_resp.text
+
+    # The entire subtree must be gone.
+    for cid in (parent_id, child_id, grandchild_id):
+        assert client.get(f"/api/categories/{cid}").status_code == 404
+
+    # The rule that pointed at a deleted category must also be gone.
+    rules = client.get("/api/rules/").json()
+    assert not any(r["id"] == rule_id for r in rules), \
+        f"rule {rule_id} should have been cascade-deleted, got: {rules}"
