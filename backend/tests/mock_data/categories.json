@@ -1,15 +1,7 @@
 [
     {
-        "name": "Income",
-        "parent_name": null
-    },
-    {
-        "name": "Expense",
-        "parent_name": null
-    },
-    {
         "name": "Mobility",
-        "parent_name": "Expense"
+        "parent_name": "Ausgaben"
     },
     {
         "name": "Train",
@@ -21,15 +13,15 @@
     },
     {
         "name": "Groceries",
-        "parent_name": "Expense"
+        "parent_name": "Ausgaben"
     },
     {
         "name": "Rent",
-        "parent_name": "Expense"
+        "parent_name": "Ausgaben"
     },
     {
         "name": "Utilities",
-        "parent_name": "Expense"
+        "parent_name": "Ausgaben"
     },
     {
         "name": "Money Transfer",

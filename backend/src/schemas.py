@@ -86,10 +86,16 @@ class CategoryCreate(AppBaseModel):
     """Payload to create a transaction category."""
 
     name: str = Field(..., max_length=255, description="Category name.")
-    parent_name: Optional[str] = Field(
+    parent_id: Optional[int] = Field(
         None,
-        description="Direct parent category's name; omit for a root category.",
+        description="Direct parent category's id; omit for a root category.",
     )
+
+
+class CategoryUpdate(AppBaseModel):
+    """Payload to rename a category."""
+
+    name: str = Field(..., max_length=255, description="New category name.")
 
 
 class Category(AppBaseModel):

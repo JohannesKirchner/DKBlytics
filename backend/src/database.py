@@ -53,3 +53,13 @@ def initialize_database() -> None:
         Base.metadata.create_all(bind=engine)
     except Exception as create_all_err:
         raise RuntimeError(f"fallback create_all error: {create_all_err!r}")
+
+    # Seed mandatory top-level category roots (Einnahmen / Ausgaben).
+    # Idempotent: only inserts rows that aren't already present.
+    from .services.categories import ensure_root_categories_db
+    db = SessionLocal()
+    try:
+        ensure_root_categories_db(db)
+        db.commit()
+    finally:
+        db.close()

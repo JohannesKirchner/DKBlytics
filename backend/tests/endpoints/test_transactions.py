@@ -109,8 +109,8 @@ def test_update_transaction(client):
             2,
             id="RootsChildrenJanuary2025",
         ),
-        pytest.param("scope_name=Expense&depth=1", 4, id="Expense"),
-        pytest.param("scope_name=Expense&depth=2", 5, id="ExpenseChildren"),
+        pytest.param("scope_name=Ausgaben&depth=1", 4, id="Ausgaben"),
+        pytest.param("scope_name=Ausgaben&depth=2", 5, id="AusgabenChildren"),
     ],
 )
 def test_get_transaction_summary(client, query, expected_length):
