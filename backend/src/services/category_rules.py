@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .categories import _find_unique_category_by_name
 from ..utils import Conflict, NotFound
-from ..models import CategoryRule as CategoryRuleORM
+from ..models import Category as CategoryORM, CategoryRule as CategoryRuleORM
 from ..schemas import (
     CategoryRule,
     CategoryRuleCreate,
@@ -65,8 +65,16 @@ class RulesIndex:
 
 
 def create_category_rule_db(db: Session, rule: CategoryRuleCreate) -> CategoryRule:
-    # Find (unique) category by name
-    cat = _find_unique_category_by_name(db, rule.category_name)
+    # Resolve the target category. category_id is preferred (unambiguous);
+    # category_name is the fallback for human-friendly inputs.
+    if rule.category_id is not None:
+        cat = db.get(CategoryORM, rule.category_id)
+        if cat is None:
+            raise NotFound(f"Category with id {rule.category_id} was not found.")
+    elif rule.category_name:
+        cat = _find_unique_category_by_name(db, rule.category_name)
+    else:
+        raise Conflict("Either category_id or category_name must be provided.")
 
     # Validate rule type
     if rule.transaction_id is not None:

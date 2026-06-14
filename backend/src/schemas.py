@@ -147,8 +147,12 @@ class CategoryRuleCreate(AppBaseModel):
     entity: Optional[str] = Field(
         None, max_length=500, description="Exact counterparty/entity to match. Required for non-transaction rules."
     )
-    category_name: str = Field(
-        ..., description="Name of the category to assign when the rule matches."
+    category_id: Optional[int] = Field(
+        None,
+        description="Id of the category to assign. Preferred over category_name (which can be ambiguous when names collide across parents).",
+    )
+    category_name: Optional[str] = Field(
+        None, description="Name of the category to assign. Used only when category_id is not provided."
     )
 
 
