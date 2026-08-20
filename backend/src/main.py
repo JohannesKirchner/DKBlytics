@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from .database import initialize_database
-from .routers import accounts, balances, transactions, bank, categories, category_rules
+from .routers import accounts, balances, transactions, bank, categories, category_rules, budget
 from .settings import cors_origins_from_env
 
 
@@ -42,6 +42,7 @@ app.include_router(balances.router, prefix=PREFIX)
 app.include_router(transactions.router, prefix=PREFIX)
 app.include_router(categories.router, prefix=PREFIX)
 app.include_router(category_rules.router, prefix=PREFIX)
+app.include_router(budget.router, prefix=PREFIX)
 app.include_router(bank.router, prefix=PREFIX)
 
 # Optional friendly root redirect

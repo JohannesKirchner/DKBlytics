@@ -79,6 +79,70 @@ class SurplusPoint(AppBaseModel):
     date: dt.date = Field(..., description="Representative date for the data point.")
     delta: Decimal = Field(..., description="Net change during the bucket ending on `date`.")
 
+
+# ---- Budget ----------------------------------------------------------------
+
+
+class SankeyNode(AppBaseModel):
+    """A node in the budget Sankey flow."""
+
+    id: str = Field(
+        ...,
+        description=(
+            "Stable node id. Categories are 'cat:<id>'. Synthetic nodes are "
+            "'income', 'expenses', 'savings', 'other_in', 'other_out'."
+        ),
+    )
+    label: str = Field(..., description="Display label.")
+    side: str = Field(..., description="'income', 'expense', or 'center'.")
+    depth: int = Field(
+        ...,
+        description="Depth below the side's root category (1 = top-level category); 0 for synthetic Income/Expenses/Savings nodes.",
+    )
+    group: Optional[str] = Field(
+        None,
+        description="Top-level (depth-1) category node id this node belongs to, for coloring; null for synthetic nodes.",
+    )
+
+
+class SankeyLink(AppBaseModel):
+    """A directed flow between two Sankey nodes."""
+
+    source: str = Field(..., description="Source node id.")
+    target: str = Field(..., description="Target node id.")
+    value: Decimal = Field(..., description="Flow magnitude (always positive).")
+
+
+class SankeyTotals(AppBaseModel):
+    income: Decimal = Field(..., description="Total income in the period.")
+    expenses: Decimal = Field(..., description="Total expenses in the period.")
+    savings: Decimal = Field(..., description="Income minus expenses (may be negative).")
+
+
+class SankeyMeta(AppBaseModel):
+    months_with_data: int = Field(
+        ...,
+        description="Distinct YYYY-MM with >=1 transaction in the range (account-filtered). Used for the 'average / year' mode.",
+    )
+
+
+class SankeyResponse(AppBaseModel):
+    """Full budget Sankey payload: nodes + links + totals + meta."""
+
+    nodes: List["SankeyNode"] = Field(..., description="Sankey nodes.")
+    links: List["SankeyLink"] = Field(..., description="Sankey links.")
+    totals: SankeyTotals = Field(..., description="Period totals.")
+    meta: SankeyMeta = Field(..., description="Extra period metadata.")
+
+
+class CategorySeriesPoint(AppBaseModel):
+    """One bucket of a category's subtree spending/earning over time."""
+
+    date: dt.date = Field(..., description="First day of the bucket (month or year).")
+    value: Decimal = Field(
+        ..., description="Summed magnitude of the category subtree in the bucket."
+    )
+
 # ---- Category --------------------------------------------------------------
 
 
